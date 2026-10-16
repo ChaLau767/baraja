@@ -6,6 +6,11 @@ on:
     tags: ['v*', '[0-9]*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Etiqueta de una Release ya creada a la que adjuntar los paquetes (por ejemplo 0.1.0). Vacío: solo compila.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -92,7 +97,8 @@ jobs:
           compression-level: 0
 
       - name: Publicar en Releases (solo versiones etiquetadas)
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
           files: ${{ env.PAQUETE }}
