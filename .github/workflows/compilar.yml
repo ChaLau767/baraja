@@ -66,7 +66,7 @@ jobs:
 
       - name: Empaquetar
         run: |
-          VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' CMakeLists.txt | cut -d' ' -f2)
+          VERSION=$(grep -oE 'project\(Baraja VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')
           ART=build/Baraja_artefacts/Release
           DIST="Baraja-${VERSION}-${{ matrix.nombre }}"
           mkdir -p "dist/$DIST"
@@ -95,6 +95,16 @@ jobs:
           name: Baraja-${{ matrix.nombre }}
           path: ${{ env.PAQUETE }}
           compression-level: 0
+
+      - name: Quitar paquetes anteriores de esta Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version || github.ref_name }}
+        run: |
+          gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null \
+            | grep -- '-${{ matrix.nombre }}\.zip$' \
+            | while read -r name; do gh release delete-asset "$TAG" "$name" -y; done || true
 
       - name: Publicar en Releases (solo versiones etiquetadas)
         if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
