@@ -1,0 +1,98 @@
+name: Compilar
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    name: ${{ matrix.nombre }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nombre: macOS
+            os: macos-14
+            cmake_args: -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64
+            pluginval: pluginval_macOS.zip
+          - nombre: Windows
+            os: windows-2022
+            cmake_args: ""
+            pluginval: pluginval_Windows.zip
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reutilizar dependencias descargadas
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configurar
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release "${{ matrix.cmake_args }}"
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Probar el motor
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Validar el plugin con pluginval
+        run: |
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/latest/download/${{ matrix.pluginval }}"
+          unzip -q pluginval.zip
+          VST3="build/Baraja_artefacts/Release/VST3/Baraja.vst3"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ./pluginval.app/Contents/MacOS/pluginval --strictness-level 7 --validate-in-process --validate "$VST3"
+          else
+            ./pluginval.exe --strictness-level 7 --validate-in-process --validate "$VST3"
+          fi
+
+      - name: Empaquetar
+        run: |
+          VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' CMakeLists.txt | cut -d' ' -f2)
+          ART=build/Baraja_artefacts/Release
+          DIST="Baraja-${VERSION}-${{ matrix.nombre }}"
+          mkdir -p "dist/$DIST"
+          cp -R "$ART/VST3/Baraja.vst3" "$ART/CLAP/Baraja.clap" "dist/$DIST/"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cp -R "$ART/AU/Baraja.component" "$ART/Standalone/Baraja.app" "dist/$DIST/"
+            # firma ad hoc: sin firma, macOS no carga binarios para Apple Silicon
+            for b in Baraja.vst3 Baraja.clap Baraja.component Baraja.app; do
+              codesign --force --deep --sign - "dist/$DIST/$b"
+            done
+            cp instalar/mac/Instalar-Baraja.command "dist/$DIST/"
+            chmod +x "dist/$DIST/Instalar-Baraja.command"
+            cp instalar/LEEME-mac.txt "dist/$DIST/LEEME.txt"
+            (cd dist && ditto -c -k --keepParent "$DIST" "$DIST.zip")
+          else
+            cp "$ART/Standalone/Baraja.exe" "dist/$DIST/"
+            cp instalar/windows/Instalar-Baraja.bat "dist/$DIST/"
+            cp instalar/LEEME-windows.txt "dist/$DIST/LEEME.txt"
+            (cd dist && 7z a -tzip "$DIST.zip" "$DIST" > /dev/null)
+          fi
+          echo "PAQUETE=dist/$DIST.zip" >> "$GITHUB_ENV"
+
+      - name: Guardar el paquete
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baraja-${{ matrix.nombre }}
+          path: ${{ env.PAQUETE }}
+          compression-level: 0
+
+      - name: Publicar en Releases (solo versiones etiquetadas)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.PAQUETE }}

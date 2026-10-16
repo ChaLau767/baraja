@@ -1,0 +1,30 @@
+BARAJA — brassage en tiempo real
+Instalación en macOS (Apple Silicon e Intel, macOS 11 o posterior)
+
+1. Descomprimí este paquete (si estás leyendo esto, ya lo hiciste).
+
+2. Abrí la aplicación Terminal (está en Aplicaciones > Utilidades).
+
+3. Escribí  bash  seguido de un espacio, arrastrá el archivo
+   Instalar-Baraja.command a la ventana de la Terminal y apretá Enter.
+
+   (Se usa la Terminal porque el instalador no está firmado por Apple:
+   si le hacés doble clic, macOS lo bloquea.)
+
+4. En Reaper: Preferencias > Plug-ins > VST > «Re-scan».
+   Baraja aparece como VST3, CLAP y AU, en «Lautaro Martin Vieyra».
+
+Qué se instala
+  Baraja.vst3       ~/Library/Audio/Plug-Ins/VST3
+  Baraja.component  ~/Library/Audio/Plug-Ins/Components   (AU, para Logic y otros)
+  Baraja.clap       ~/Library/Audio/Plug-Ins/CLAP
+  Baraja.app        ~/Applications   (aplicación independiente)
+
+Para desinstalar, borrá esos cuatro archivos.
+
+La aplicación independiente procesa la entrada de tu placa de audio.
+La primera vez, en «Options», elegí la placa y desactivá «Mute audio input»
+(viene silenciada para evitar acoples entre micrófono y parlantes: usá auriculares).
+
+Código fuente y versiones nuevas: https://github.com/ChaLau767/baraja
+Licencia: GNU AGPL 3.0. Podés usarlo, compartirlo y modificarlo libremente.

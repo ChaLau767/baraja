@@ -1,0 +1,29 @@
+BARAJA — brassage en tiempo real
+Instalación en Windows 10 y 11 (64 bits)
+
+1. Descomprimí este paquete en una carpeta (clic derecho > «Extraer todo»).
+   No lo ejecutes desde adentro del .zip.
+
+2. Hacé doble clic en Instalar-Baraja.bat y aceptá el pedido de permisos
+   de administrador.
+
+   Como Baraja no está firmado por Microsoft, puede aparecer el aviso
+   «Windows protegió su PC». Tocá «Más información» y después «Ejecutar de todas formas».
+
+3. En Reaper: Options > Preferences > Plug-ins > VST > «Re-scan».
+   Baraja aparece como VST3 y CLAP, en «Lautaro Martin Vieyra».
+
+Qué se instala
+  Baraja.vst3   C:\Program Files\Common Files\VST3
+  Baraja.clap   C:\Program Files\Common Files\CLAP
+  Baraja.exe    %LOCALAPPDATA%\Programs\Baraja   (aplicación independiente,
+                con acceso directo en el menú Inicio)
+
+Para desinstalar, borrá esos archivos y el acceso directo.
+
+La aplicación independiente procesa la entrada de tu placa de audio.
+La primera vez, en «Options», elegí la placa (modo WASAPI) y desactivá
+«Mute audio input» (viene silenciada para evitar acoples: usá auriculares).
+
+Código fuente y versiones nuevas: https://github.com/ChaLau767/baraja
+Licencia: GNU AGPL 3.0. Podés usarlo, compartirlo y modificarlo libremente.
