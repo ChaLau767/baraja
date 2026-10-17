@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Baraja VERSION 0.1.0 LANGUAGES C CXX)
+project(Baraja VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,15 @@ clap_juce_extensions_plugin(TARGET Baraja
     CLAP_ID "ar.lautarovieyra.baraja"
     CLAP_FEATURES audio-effect granular delay stereo)
 
+juce_add_binary_data(BarajaData
+    HEADER_NAME BinaryData.h
+    NAMESPACE BinaryData
+    SOURCES
+        Resources/fonts/BarlowCondensed-SemiBold.ttf
+        Resources/fonts/BarlowCondensed-Bold.ttf
+        Resources/fonts/BarlowCondensed-ExtraBold.ttf
+        Resources/fonts/ShareTechMono-Regular.ttf)
+
 target_sources(Baraja PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
@@ -62,6 +71,7 @@ target_compile_definitions(Baraja PUBLIC
 
 target_link_libraries(Baraja
     PRIVATE
+        BarajaData
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -82,6 +92,12 @@ if(BARAJA_SNAPSHOT)
     target_sources(baraja_snapshot PRIVATE tests/Snapshot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(baraja_snapshot PRIVATE Source)
     target_compile_definitions(baraja_snapshot PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_VersionString="0.1.0" JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
-    target_link_libraries(baraja_snapshot PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_VersionString="0.2.0" JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(baraja_snapshot PRIVATE BarajaData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+
+    juce_add_console_app(baraja_hosttest PRODUCT_NAME "baraja_hosttest")
+    target_sources(baraja_hosttest PRIVATE tests/HostTest.cpp)
+    target_compile_definitions(baraja_hosttest PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(baraja_hosttest PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
 endif()

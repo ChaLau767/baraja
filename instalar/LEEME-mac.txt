@@ -26,5 +26,10 @@ La aplicación independiente procesa la entrada de tu placa de audio.
 La primera vez, en «Options», elegí la placa y desactivá «Mute audio input»
 (viene silenciada para evitar acoples entre micrófono y parlantes: usá auriculares).
 
+Multicanal (novedad de la 0.2)
+En Reaper, poné «Track channels» de la pista en la cantidad de salidas que
+quieras (hasta 64) e insertá Baraja como VST3: se adapta solo. El encabezado
+del plugin muestra cuántas salidas usa. El formato CLAP, por ahora, es estéreo.
+
 Código fuente y versiones nuevas: https://github.com/ChaLau767/baraja
 Licencia: GNU AGPL 3.0. Podés usarlo, compartirlo y modificarlo libremente.

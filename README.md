@@ -2,7 +2,7 @@
 
 **Brassage en tiempo real** para VST3, CLAP, AU y como aplicación independiente, en macOS y Windows.
 
-Baraja guarda los últimos segundos de lo que entra en una memoria y la recorre tomando fragmentos de tamaño, altura, sentido y posición estéreo variables, que superpone según la densidad elegida. La memoria se puede congelar para seguir barajando lo que quedó guardado aunque la pista quede en silencio.
+Baraja guarda los últimos segundos (de 5 a 60) de lo que entra en una memoria y la recorre tomando fragmentos de tamaño, altura, sentido y posición estéreo variables, que superpone según la densidad elegida. La memoria se puede congelar para seguir barajando lo que quedó guardado aunque la pista quede en silencio.
 
 ![Interfaz de Baraja](docs/captura.png)
 
@@ -13,29 +13,51 @@ Baraja guarda los últimos segundos de lo que entra en una memoria y la recorre 
 
 Las versiones de prueba, que todavía no se publicaron como Release, están en la pestaña **[Actions](../../actions)**: abrí la última compilación exitosa y bajá el paquete desde *Artifacts* (hace falta una cuenta de GitHub).
 
+## Novedades de la 0.2
+
+- **Skin Tape**: carretes que giran mientras se graba y se detienen al congelar, la memoria como una cinta con su forma de onda, y un medidor de picos con escala en dBFS.
+- **Ventana de lectura**: *Posición* (desde qué punto del pasado se lee) y *Ancho* (cuánto abarca). Se ajusta arrastrando los cabezales sobre la cinta; arrastrando entre ellos, la ventana se mueve.
+- **Memoria configurable**: 5, 10, 20, 30 o 60 segundos.
+- **Multicanal**: de 1 a 64 salidas, con reparto por *puntos* (cada fragmento sale por un altavoz) o en *anillo* (entre dos altavoces vecinos), con centro y rotación.
+- **Interfaz en inglés y en castellano** (botones EN / ES); los parámetros aparecen en inglés en el DAW.
+- Las sesiones guardadas con la 0.1 se abren con sus valores: la antigua *Profundidad* pasa a ser el *Ancho*.
+
 ## Parámetros
 
 | Grupo | Parámetro | Qué hace |
 |---|---|---|
-| Fragmentos | Tamaño | Duración media de cada fragmento (5 ms a 1 s). |
-| | Variación del tamaño | Cuánto cambia la duración de un fragmento a otro. |
-| | Densidad | Cuántos fragmentos suenan superpuestos en promedio. |
-| | Irregularidad rítmica | 0 = fragmentos a intervalos regulares; 100 = totalmente irregulares. |
-| | Suavidad de ventana | Forma de la envolvente de cada fragmento: de bordes abruptos a campana. |
-| Memoria | Profundidad | Hasta qué punto del pasado se toman fragmentos (20 ms a 8 s). |
-| | Congelar memoria | Deja de grabar y sigue barajando lo guardado. |
-| Altura y sentido | Transposición fija | Transpone todos los fragmentos en la misma proporción (±24 semitonos). |
-| | Variación aleatoria | Cada fragmento recibe además una altura al azar dentro de este rango. |
-| | Deriva aleatoria / velocidad | La transposición fija vaga sola en el tiempo. |
-| | Fragmentos invertidos | Probabilidad de que un fragmento se lea al revés. |
-| | Sentido de la variación | Hacia ambos lados, solo hacia arriba o solo hacia abajo. |
-| | Alturas posibles | Libres, cuantizadas a semitonos o a octavas. |
-| Espacio y salida | Dispersión estéreo | Cuánto se reparten los fragmentos entre izquierda y derecha. |
-| | Amplitud aleatoria | Variación de intensidad entre fragmentos. |
-| | Mezcla | Proporción entre señal original y procesada. |
-| | Salida | Ganancia final. |
+| Memory | Length | Duración de la memoria: 5 a 60 s. Cambiarla vacía la memoria. |
+| | Position | Desde qué punto del pasado empieza la ventana de lectura (0 = ahora). |
+| | Width | Cuánto abarca la ventana de lectura. |
+| | Freeze | Deja de grabar y sigue barajando lo guardado. |
+| Fragments | Size | Duración media de cada fragmento (5 ms a 1 s). |
+| | Variation | Cuánto cambia la duración de un fragmento a otro. |
+| | Density | Cuántos fragmentos suenan superpuestos en promedio. |
+| | Irregular | 0 = fragmentos a intervalos regulares; 100 = totalmente irregulares. |
+| | Window | Forma de la envolvente de cada fragmento: de bordes abruptos a campana. |
+| Pitch | Transpose | Transpone todos los fragmentos en la misma proporción (±24 semitonos). |
+| | Random | Cada fragmento recibe además una altura al azar dentro de este rango. |
+| | Drift / Drift rate | La transposición vaga sola en el tiempo. |
+| | Reverse | Probabilidad de que un fragmento se lea al revés. |
+| | Direction | La variación aleatoria va hacia ambos lados, solo hacia arriba o solo hacia abajo. |
+| | Steps | Alturas libres, cuantizadas a semitonos o a octavas. |
+| Space | Mode | Con 3 salidas o más: *Points* (un altavoz por fragmento) o *Ring* (entre dos vecinos). |
+| | Spread | Cuánto se reparten los fragmentos: en estéreo, el panorama; en multicanal, la porción del anillo. |
+| | Center | Multicanal: centro del reparto sobre el anillo, en grados. |
+| | Rotation | Multicanal: vueltas por segundo del centro alrededor del anillo. |
+| Output | Rnd amp | Variación de nivel al azar entre fragmentos. |
+| | Mix | Proporción entre señal original y procesada. En multicanal, la original sale por 1 y 2. |
+| | Output | Ganancia final. |
 
-Doble clic sobre un control lo vuelve a su valor inicial. Los ajustes de fábrica (Granizo, Nube lenta, Tartamudeo, Coral, Espejo, Octavas, Deriva, Enjambre) también aparecen en la lista de presets del DAW.
+Doble clic sobre un control lo vuelve a su valor inicial. Los ajustes de fábrica también aparecen en la lista de presets del DAW.
+
+## Multicanal en Reaper
+
+1. En la pista, abrí el botón de ruteo y poné *Track channels* en la cantidad de salidas que necesites (por ejemplo 8, 16 o 64).
+2. Insertá **Baraja (VST3)**. El plugin se adapta a la cantidad de canales de la pista: el encabezado muestra cuántas salidas está usando.
+3. Mandá cada canal de la pista a la salida de hardware que corresponda (o a otras pistas para seguir procesando).
+
+En esta versión el formato **CLAP funciona en estéreo**; para multicanal usá el **VST3** o la aplicación independiente, que abre todas las salidas de la placa elegida en *Options*.
 
 ## Compilar desde el código
 
@@ -45,6 +67,8 @@ Hace falta CMake 3.22 o posterior y un compilador de C++17: Xcode o sus Command 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ctest --test-dir build -C Release
+# opcional: pruebas como host y capturas de la interfaz
+cmake -B build -DBARAJA_SNAPSHOT=ON
 ```
 
 Cada cambio que se sube a `main` se compila automáticamente para macOS (universal) y Windows, se prueba y se valida con [pluginval](https://github.com/Tracktion/pluginval). Para publicar una versión, se crea una etiqueta `vX.Y.Z`.
@@ -53,8 +77,10 @@ Cada cambio que se sube a `main` se compila automáticamente para macOS (univers
 
 - `Source/BarajaEngine.h`: el motor de audio, independiente de JUCE.
 - `Source/Parameters.h`: parámetros y ajustes de fábrica.
-- `Source/PluginProcessor.*`, `Source/PluginEditor.*`: el plugin y su interfaz.
-- `tests/`: prueba del motor y herramienta de captura de la interfaz.
+- `Source/PluginProcessor.*`: el plugin (buses, memoria, estado).
+- `Source/PluginEditor.*`: la skin Tape.
+- `Resources/fonts/`: tipografías Barlow Condensed y Share Tech Mono (licencia SIL Open Font).
+- `tests/`: prueba del motor, prueba como host VST3 (hasta 64 salidas) y herramienta de captura de la interfaz.
 - `instalar/`: instaladores e instrucciones que viajan en cada paquete.
 
 ## Licencia
@@ -62,5 +88,5 @@ Cada cambio que se sube a `main` se compila automáticamente para macOS (univers
 Copyright © 2026 Lautaro Martín Vieyra.
 Baraja es software libre bajo la [GNU Affero General Public License 3.0](LICENSE) o posterior: se puede usar, estudiar, compartir y modificar, siempre que las versiones modificadas que se distribuyan mantengan la misma licencia y su código abierto.
 
-Usa [JUCE](https://juce.com) (AGPL 3.0) y [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (MIT).
+Usa [JUCE](https://juce.com) (AGPL 3.0) y [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (MIT). Tipografías: [Barlow](https://github.com/jpt/barlow) y [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono), ambas bajo SIL Open Font License 1.1 (`Resources/fonts/`).
 VST es una marca registrada de Steinberg Media Technologies GmbH.

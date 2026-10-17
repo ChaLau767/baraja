@@ -45,13 +45,21 @@ jobs:
           key: deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configurar
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release "${{ matrix.cmake_args }}"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBARAJA_SNAPSHOT=ON "${{ matrix.cmake_args }}"
 
       - name: Compilar
         run: cmake --build build --config Release --parallel 4
 
       - name: Probar el motor
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Probar el plugin como lo carga un DAW (hasta 64 salidas, sesiones 0.1)
+        run: |
+          BIN=build/baraja_hosttest_artefacts/Release
+          SNAP=build/baraja_snapshot_artefacts/Release
+          if [ "$RUNNER_OS" = "Windows" ]; then EXT=.exe; else EXT=; fi
+          "$BIN/baraja_hosttest$EXT" "build/Baraja_artefacts/Release/VST3/Baraja.vst3"
+          "$SNAP/baraja_snapshot$EXT" --compat
 
       - name: Validar el plugin con pluginval
         run: |
