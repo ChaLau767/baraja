@@ -13,6 +13,16 @@ Baraja guarda los últimos segundos (de 5 a 60) de lo que entra en una memoria y
 
 Las versiones de prueba, que todavía no se publicaron como Release, están en la pestaña **[Actions](../../actions)**: abrí la última compilación exitosa y bajá el paquete desde *Artifacts* (hace falta una cuenta de GitHub).
 
+## Novedades de la 0.3: entre Shuffling y Freeze
+
+- **Order**: en 0, los fragmentos se toman al azar dentro de la ventana, como un *shuffling*. En 100, siguen a un **cabezal de lectura** que recorre la ventana, como un *freeze*. Los valores intermedios mezclan ambos comportamientos.
+- **Speed**: velocidad y sentido del cabezal, independientes de la altura. 1 = velocidad original; 0,5 = la mitad (estira el material sin transponerlo); 0 = detenido; valores negativos = hacia atrás.
+- El cabezal se ve sobre la cinta y da la vuelta al llegar a los bordes de la ventana.
+- Ajustes nuevos: *Stretch* (Estirado), *Suspended* (Suspendido) y *Rewind* (Retroceso).
+- Las sesiones de la 0.2 suenan igual que antes, porque Order arranca en 0.
+
+Con la memoria sin congelar, Order 100 y Speed 1 el cabezal acompaña al sonido con un retardo fijo; si además se cambia la transposición, Baraja funciona como un transpositor granular.
+
 ## Novedades de la 0.2
 
 - **Skin Tape**: carretes que giran mientras se graba y se detienen al congelar, la memoria como una cinta con su forma de onda, y un medidor de picos con escala en dBFS.
@@ -29,6 +39,8 @@ Las versiones de prueba, que todavía no se publicaron como Release, están en l
 | Memory | Length | Duración de la memoria: 5 a 60 s. Cambiarla vacía la memoria. |
 | | Position | Desde qué punto del pasado empieza la ventana de lectura (0 = ahora). |
 | | Width | Cuánto abarca la ventana de lectura. |
+| | Order | 0 = fragmentos al azar en la ventana (shuffling); 100 = siguen al cabezal de lectura (freeze). |
+| | Speed | Velocidad y sentido del cabezal (−4 a +4), independientes de la altura. 0 = detenido. |
 | | Freeze | Deja de grabar y sigue barajando lo guardado. |
 | Fragments | Size | Duración media de cada fragmento (5 ms a 1 s). |
 | | Variation | Cuánto cambia la duración de un fragmento a otro. |

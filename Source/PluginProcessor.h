@@ -70,7 +70,7 @@ private:
 
     struct Refs
     {
-        std::atomic<float> *size, *sizeVar, *density, *jitter, *shape, *position, *width, *pitch, *pitchVar,
+        std::atomic<float> *size, *sizeVar, *density, *jitter, *shape, *position, *width, *order, *speed, *pitch, *pitchVar,
                            *drift, *driftRate, *reverse, *spread, *center, *rotation, *ampVar, *mix, *gain,
                            *vdir, *quant, *spaceMode, *freeze, *memory;
     } refs {};

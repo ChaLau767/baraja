@@ -17,6 +17,10 @@ int main()
     { baraja::Params p; p.size = 5; p.density = 16; p.jitter = 100; p.shape = 0; cases.push_back ({ "tiny fragments", p }); }
     { baraja::Params p; p.position = 3000; p.width = 500; p.spaceMode = 0; p.spread = 100; p.density = 12; cases.push_back ({ "window in the past, points", p }); }
     { baraja::Params p; p.position = 1000; p.width = 2000; p.spaceMode = 1; p.spread = 40; p.rotation = 0.5f; p.center = 90; cases.push_back ({ "ring, rotating", p }); }
+    { baraja::Params p; p.order = 100; p.speed = 0.25f; p.size = 200; p.density = 8; p.shape = 95; p.width = 4000; cases.push_back ({ "freeze: slow head", p }); }
+    { baraja::Params p; p.order = 95; p.speed = 0; p.width = 600; p.position = 200; cases.push_back ({ "freeze: head stopped", p }); }
+    { baraja::Params p; p.order = 100; p.speed = -4; p.pitch = 12; p.width = 3000; cases.push_back ({ "freeze: fast backwards", p }); }
+    { baraja::Params p; p.order = 50; p.speed = 4; p.pitch = -12; p.reverse = 50; p.width = 3000; cases.push_back ({ "half order, fast forward", p }); }
 
     int failures = 0;
     for (double memory : { 5.0, 60.0 })

@@ -22,7 +22,7 @@ BarajaProcessor::BarajaProcessor()
       apvts (*this, nullptr, "BARAJA", baraja::createLayout())
 {
     auto r = [this] (const char* id) { return apvts.getRawParameterValue (id); };
-    refs = { r ("size"), r ("sizeVar"), r ("density"), r ("jitter"), r ("shape"), r ("position"), r ("width"), r ("pitch"),
+    refs = { r ("size"), r ("sizeVar"), r ("density"), r ("jitter"), r ("shape"), r ("position"), r ("width"), r ("order"), r ("speed"), r ("pitch"),
              r ("pitchVar"), r ("drift"), r ("driftRate"), r ("reverse"), r ("spread"), r ("center"), r ("rotation"),
              r ("ampVar"), r ("mix"), r ("gain"), r ("vdir"), r ("quant"), r ("spaceMode"), r ("freeze"), r ("memory") };
 
@@ -88,7 +88,8 @@ baraja::Params BarajaProcessor::readParams() const noexcept
     baraja::Params p;
     p.size = refs.size->load();           p.sizeVar = refs.sizeVar->load();     p.density = refs.density->load();
     p.jitter = refs.jitter->load();       p.shape = refs.shape->load();         p.position = refs.position->load();
-    p.width = refs.width->load();         p.pitch = refs.pitch->load();         p.pitchVar = refs.pitchVar->load();
+    p.width = refs.width->load();         p.order = refs.order->load();         p.speed = refs.speed->load();
+            p.pitch = refs.pitch->load();         p.pitchVar = refs.pitchVar->load();
     p.drift = refs.drift->load();         p.driftRate = refs.driftRate->load(); p.reverse = refs.reverse->load();
     p.spread = refs.spread->load();       p.center = refs.center->load();       p.rotation = refs.rotation->load();
     p.ampVar = refs.ampVar->load();       p.mix = refs.mix->load();             p.gain = refs.gain->load();
@@ -143,6 +144,7 @@ bool BarajaProcessor::readTelemetry (baraja::Telemetry& dest)
     dest.drift = telemetry.drift;
     dest.outPeak = telemetry.outPeak;
     dest.ringPhase = telemetry.ringPhase;
+    dest.headMs = telemetry.headMs;
     dest.numOutputs = telemetry.numOutputs;
     telemetry.outPeak = 0.0f;
     if (fresh)

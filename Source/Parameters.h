@@ -50,6 +50,8 @@ inline const std::vector<FloatSpec>& floatSpecs()
         { "shape",     "Window",        "Ventana",        0.0f,   100.0f,   60.0f,   "%",     0, S::linear,      false, "Fragment envelope: 0 = hard edges, 100 = bell", "Envolvente: 0 = bordes abruptos, 100 = campana" },
         { "position",  "Position",      "Posición",       0.0f,   60000.0f, 0.0f,    "ms",    0, S::skewed,      false, "How far back the reading window starts", "Desde qué punto del pasado se lee" },
         { "width",     "Width",         "Ancho",          20.0f,  60000.0f, 1500.0f, "ms",    0, S::logarithmic, false, "Length of the reading window", "Cuánto abarca la zona de lectura" },
+        { "order",     "Order",         "Orden",          0.0f,   100.0f,   0.0f,    "%",     0, S::linear,      false, "0 = fragments taken at random (shuffling), 100 = they follow the read head (freeze)", "0 = fragmentos al azar (shuffling), 100 = siguen al cabezal de lectura (freeze)" },
+        { "speed",     "Speed",         "Velocidad",      -4.0f,  4.0f,     1.0f,    "x",     2, S::linear,      true,  "Read head speed and direction, independent of pitch. 0 = stopped", "Velocidad y sentido del cabezal, independiente de la altura. 0 = detenido" },
         { "pitch",     "Transpose",     "Transposición",  -24.0f, 24.0f,    0.0f,    "st",    2, S::linear,      true,  "Every fragment is transposed by the same amount", "Todos los fragmentos se transponen igual" },
         { "pitchVar",  "Random",        "Aleatoria",      0.0f,   24.0f,    0.0f,    "st",    2, S::linear,      false, "Each fragment also gets a random pitch in this range", "Cada fragmento recibe además una altura al azar" },
         { "drift",     "Drift",         "Deriva",         0.0f,   24.0f,    0.0f,    "st",    2, S::linear,      false, "The transposition wanders on its own", "La transposición vaga sola en el tiempo" },
@@ -115,15 +117,16 @@ inline juce::NormalisableRange<float> rangeFor (const FloatSpec& s)
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    const int v1 = 1, v2 = 2;   // parameter versions: 2 = added in Baraja 0.2
+    const int v1 = 1, v2 = 2, v3 = 3;   // parameter versions: 2 = added in Baraja 0.2, 3 = added in 0.3
 
     for (const auto& s : floatSpecs())
     {
         const juce::String id (s.id);
         const bool isNew = id == "position" || id == "width" || id == "center" || id == "rotation";
+        const bool isNewer = id == "order" || id == "speed";
         const auto sp = s;
         layout.add (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { s.id, isNew ? v2 : v1 }, u8 (s.en), rangeFor (s), s.def,
+            juce::ParameterID { s.id, isNewer ? v3 : (isNew ? v2 : v1) }, u8 (s.en), rangeFor (s), s.def,
             juce::AudioParameterFloatAttributes()
                 .withLabel (s.unit)
                 .withStringFromValueFunction ([sp] (float v, int) { return formatValue (sp, v); })
@@ -163,6 +166,9 @@ inline const std::vector<Preset>& presets()
         { "Octaves",    "Octavas",    { {"size",300}, {"sizeVar",40}, {"density",5}, {"jitter",65}, {"shape",90}, {"width",2500}, {"pitchVar",13}, {"quant",2}, {"reverse",15}, {"spread",100}, {"ampVar",25} } },
         { "Drift",      "Deriva",     { {"size",260}, {"sizeVar",35}, {"density",6}, {"jitter",55}, {"shape",90}, {"width",2200}, {"pitchVar",0.4f}, {"drift",7}, {"driftRate",0.15f}, {"reverse",20}, {"spread",90}, {"ampVar",20} } },
         { "Swarm",      "Enjambre",   { {"size",60}, {"sizeVar",60}, {"density",12}, {"jitter",95}, {"shape",50}, {"width",1000}, {"pitch",5}, {"pitchVar",12}, {"vdir",1}, {"drift",3}, {"driftRate",2.5f}, {"reverse",10}, {"spread",100}, {"ampVar",50} } },
+        { "Stretch",    "Estirado",   { {"order",100}, {"speed",0.25f}, {"size",200}, {"sizeVar",10}, {"density",8}, {"jitter",30}, {"shape",95}, {"width",4000}, {"spread",60} } },
+        { "Suspended",  "Suspendido", { {"order",95}, {"speed",0}, {"size",300}, {"sizeVar",20}, {"density",10}, {"jitter",50}, {"shape",100}, {"position",200}, {"width",600}, {"spread",80}, {"ampVar",10} } },
+        { "Rewind",     "Retroceso",  { {"order",80}, {"speed",-1}, {"size",150}, {"density",5}, {"jitter",40}, {"shape",80}, {"width",6000}, {"spread",70} } },
         { "Echoes",     "Ecos",       { {"size",350}, {"sizeVar",20}, {"density",2.5f}, {"jitter",40}, {"shape",80}, {"position",4000}, {"width",1500}, {"spread",100}, {"rotation",0.05f} } },
     };
     return list;

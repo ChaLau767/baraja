@@ -26,6 +26,8 @@ struct Params
     float shape     = 60.0f;    // % window smoothness
     float position  = 0.0f;     // ms: how far back the newest edge of the reading window is
     float width     = 1500.0f;  // ms: length of the reading window
+    float order     = 0.0f;     // %: 0 = fragments taken at random (shuffling), 100 = they follow the read head (freeze)
+    float speed     = 1.0f;     // read head speed and direction (x), independent of pitch; 0 = stopped
     float pitch     = 0.0f;     // semitones, fixed transposition
     float pitchVar  = 0.0f;     // semitones, random variation
     int   vdir      = 0;        // 0 both ways, 1 up, 2 down
@@ -59,6 +61,7 @@ struct Telemetry
     float memoryMs = 10000.0f;
     float drift = 0.0f;
     float outPeak = 0.0f;
+    float headMs = 0.0f;
     float ringPhase = 0.0f;
     int numOutputs = 2;
 };
@@ -90,6 +93,7 @@ public:
         for (auto& g : grains) g.active = false;
         driftPhase = driftFrom = driftTo = driftNow = 0.0;
         ringPhase = 0.0;
+        headDelay = 0.0;
         teleCount = 0;
         outPeakAcc = 0.0f;
     }
@@ -127,6 +131,10 @@ public:
         float* buf = buffer.data();
         double wet[maxOutputs];
 
+        // reading window in samples, and how the head moves relative to "now" each sample
+        windowSamples (p, winNew, winWide);
+        const double headStep = p.freeze ? -(double) p.speed : 1.0 - (double) p.speed;
+
         for (int i = 0; i < n; ++i)
         {
             const float dl = inL ? inL[i] : 0.0f;
@@ -137,6 +145,11 @@ public:
                 buf[writePos] = 0.5f * (dl + dr);
                 writePos = (writePos + 1) & mask;
             }
+
+            // the read head travels through the window and wraps at its edges
+            headDelay += headStep;
+            if (headDelay > winNew + winWide || headDelay < winNew)
+                headDelay = winNew + std::fmod (std::fmod (headDelay - winNew, winWide) + winWide, winWide);
 
             nextGrain -= 1.0;
             if (nextGrain <= 0.0)
@@ -216,6 +229,7 @@ public:
         t.drift = (float) driftNow;
         t.outPeak = std::max (t.outPeak, outPeakAcc);
         t.ringPhase = (float) ringPhase;
+        t.headMs = (float) (headDelay * 1000.0 / sr);
         t.numOutputs = currentOutputs;
         outPeakAcc = 0.0f;
 
@@ -326,10 +340,11 @@ private:
         const double minD = rev ? 64.0
                           : (p.freeze ? span + 64.0 : std::max (0.0, length * (rate - 1.0)) + 64.0);
 
-        const double memMs = getMemoryMs();
-        const double posMs = std::clamp ((double) p.position, 0.0, memMs - 20.0);
-        const double widMs = std::clamp ((double) p.width, 1.0, memMs - posMs);
-        double d = minD + (posMs + rnd() * widMs) * sr / 1000.0;
+        // shuffling: anywhere in the window; freeze: centred on the read head, with a little scatter
+        const double o = std::clamp (p.order / 100.0, 0.0, 1.0);
+        const double dRandom = winNew + rnd() * winWide;
+        const double dHead = headDelay + (rev ? -0.5 : 0.5) * span + (rnd() * 2.0 - 1.0) * 0.15 * span;
+        double d = (minD + dRandom) * (1.0 - o) + dHead * o;
         const double oldest = rev ? d + span : d;
         if (oldest > maxOld) d -= oldest - maxOld;
         if (d < minD) d = minD;
@@ -347,7 +362,17 @@ private:
         place (*g, p, numOuts);
     }
 
+    void windowSamples (const Params& p, double& newest, double& wide) const noexcept
+    {
+        const double memMs = getMemoryMs();
+        const double posMs = std::clamp ((double) p.position, 0.0, memMs - 20.0);
+        const double widMs = std::clamp ((double) p.width, 1.0, memMs - posMs);
+        newest = posMs * sr / 1000.0;
+        wide = std::max (16.0, widMs * sr / 1000.0);
+    }
+
     double sr = 48000.0, memorySamples = 480000.0;
+    double headDelay = 0.0, winNew = 0.0, winWide = 48000.0;
     std::vector<float> buffer;
     int mask = 0, writePos = 0, currentOutputs = 2;
     Grain grains[maxGrains];

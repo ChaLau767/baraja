@@ -340,6 +340,7 @@ void Transport::update (const Telemetry& t, bool peaksFresh, bool running)
     std::copy (t.grains, t.grains + t.numGrains, tele.grains);
     tele.drift = t.drift;
     tele.numOutputs = t.numOutputs;
+    tele.headMs = t.headMs;
     if (peaksFresh)
     {
         std::copy (t.peaks, t.peaks + Telemetry::numPeaks, tele.peaks);
@@ -485,6 +486,19 @@ void Transport::paint (juce::Graphics& g)
         g.fillRoundedRectangle (rect.expanded (2.0f, 3.0f), 3.0f);
         g.setColour (c.withAlpha (alpha));
         g.fillRoundedRectangle (rect, 2.0f);
+    }
+
+    // the read head: fragments gather around it as Order rises
+    const float order = processor.apvts.getRawParameterValue ("order")->load() / 100.0f;
+    if (order > 0.005f)
+    {
+        const float hx = xForMs (tele.headMs);
+        g.setColour (colours::cream.withAlpha (0.25f + 0.7f * order));
+        g.fillRect (hx - 1.0f, s.getY(), 2.0f, s.getHeight());
+        juce::Path tri;
+        tri.addTriangle (hx - 6.0f, s.getY() - 1.0f, hx + 6.0f, s.getY() - 1.0f, hx, s.getY() + 8.0f);
+        tri.addTriangle (hx - 6.0f, s.getBottom() + 1.0f, hx + 6.0f, s.getBottom() + 1.0f, hx, s.getBottom() - 8.0f);
+        g.fillPath (tri);
     }
 
     // the two heads that hold the window: drag them
@@ -666,7 +680,7 @@ Content::Content (BarajaProcessor& p)
 
     auto onUser = [this] { shownProgram = -1; highlightPreset(); };
     const std::vector<std::pair<const char*, float>> knobIds {
-        { "position", 58 }, { "width", 58 },
+        { "position", 58 }, { "width", 58 }, { "order", 58 }, { "speed", 58 },
         { "size", 58 }, { "sizeVar", 58 }, { "density", 58 }, { "jitter", 58 }, { "shape", 58 },
         { "pitch", 58 }, { "pitchVar", 58 }, { "drift", 58 }, { "driftRate", 58 }, { "reverse", 58 },
         { "spread", 50 }, { "center", 50 }, { "rotation", 50 },
@@ -712,7 +726,7 @@ Content::~Content()
 
 Knob* Content::knob (const juce::String& id) const
 {
-    const auto& ids = std::vector<const char*> { "position", "width", "size", "sizeVar", "density", "jitter", "shape",
+    const auto& ids = std::vector<const char*> { "position", "width", "order", "speed", "size", "sizeVar", "density", "jitter", "shape",
                                                  "pitch", "pitchVar", "drift", "driftRate", "reverse",
                                                  "spread", "center", "rotation", "ampVar", "mix", "gain" };
     for (size_t i = 0; i < ids.size(); ++i) if (id == ids[i]) return knobs[(int) i];
@@ -851,9 +865,11 @@ void Content::resized()
     {
         const auto a = sectionArea (0);
         memorySwitch->setBounds (a.getX(), a.getY() + 34, a.getWidth(), 44);
-        place ("position", a.getX() + 52, a.getY() + 90);
-        place ("width", a.getX() + 154, a.getY() + 90);
-        freezeButton.setBounds (a.getX(), a.getY() + 204, a.getWidth(), 50);
+        place ("position", a.getX() + 52, a.getY() + 84);
+        place ("width", a.getX() + 154, a.getY() + 84);
+        place ("order", a.getX() + 52, a.getY() + 186);
+        place ("speed", a.getX() + 154, a.getY() + 186);
+        freezeButton.setBounds (a.getX(), a.getY() + 294, a.getWidth(), 46);
     }
     // fragments and pitch: 3 × 2 grids
     for (int col : { 1, 2 })
