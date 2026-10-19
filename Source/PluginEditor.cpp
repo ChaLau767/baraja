@@ -143,9 +143,49 @@ void LookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, 
     g.drawText (caps (b.getButtonText()), area, juce::Justification::centred);
 }
 
+void LookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box)
+{
+    auto r = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (0.75f);
+    g.setColour (colours::cream.withAlpha (box.isEnabled() ? 0.55f : 0.25f));
+    g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (colours::ink.withAlpha (box.isMouseOver (true) ? 1.0f : 0.75f));
+    g.drawRoundedRectangle (r, 3.0f, 1.3f);
+    juce::Path p;
+    const float ax = (float) w - 12.0f, ay = h * 0.5f;
+    p.startNewSubPath (ax - 4.0f, ay - 2.0f);
+    p.lineTo (ax, ay + 2.0f);
+    p.lineTo (ax + 4.0f, ay - 2.0f);
+    g.strokePath (p, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void LookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& l)
+{
+    l.setBounds (6, 1, box.getWidth() - 24, box.getHeight() - 2);
+    l.setFont (getComboBoxFont (box));
+    l.setColour (juce::Label::textColourId, colours::ink);
+}
+
+void LookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
+                                    juce::Slider::SliderStyle, juce::Slider& s)
+{
+    const float cy = y + h * 0.5f;
+    const auto track = juce::Rectangle<float> ((float) x, cy - 3.0f, (float) w, 6.0f);
+    g.setColour (colours::smoked);
+    g.fillRoundedRectangle (track, 3.0f);
+    const float mid = x + w * 0.5f;
+    g.setColour (colours::inkSoft);
+    g.fillRect (mid - 0.5f, cy - 7.0f, 1.0f, 14.0f);
+    g.setColour (s.isEnabled() ? colours::amber : colours::smokedText);
+    g.fillRoundedRectangle (juce::Rectangle<float> (juce::jmin (mid, pos), cy - 2.0f, std::abs (pos - mid), 4.0f), 2.0f);
+    g.setColour (colours::ink);
+    g.fillRoundedRectangle (pos - 4.0f, cy - 9.0f, 8.0f, 18.0f, 2.0f);
+    g.setColour (colours::cream);
+    g.fillRect (pos - 0.5f, cy - 6.0f, 1.0f, 12.0f);
+}
+
 //==============================================================================
 Knob::Knob (BarajaProcessor& p, const juce::String& id, float size)
-    : param (p.apvts.getParameter (id)), spec (baraja::spec (id)), knobSize (size)
+    : processor (p), paramId (id), dest (baraja::destIndex (id)), param (p.apvts.getParameter (id)), spec (baraja::spec (id)), knobSize (size)
 {
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
@@ -156,6 +196,7 @@ Knob::Knob (BarajaProcessor& p, const juce::String& id, float size)
     slider.setDoubleClickReturnValue (true, spec.def);
     slider.onValueChange = [this] { repaint(); };
     slider.onDragStart = [this] { if (onUserChange) onUserChange(); };
+    if (dest >= 0) slider.onPopup = [this] { showModMenu(); };
     addAndMakeVisible (slider);
     setLanguage (Lang::en);
 }
@@ -164,8 +205,55 @@ void Knob::setLanguage (Lang l)
 {
     lang = l;
     juce::String note = u8 (lang == Lang::es ? spec.noteEs : spec.noteEn);
-    slider.setTooltip ((note.isEmpty() ? juce::String() : note + ". ") + tr (lang, "dblclick") + ".");
+    slider.setTooltip ((note.isEmpty() ? juce::String() : note + ". ") + tr (lang, "dblclick") + "." + (dest >= 0 ? " " + tr (lang, "rightClickMod") : juce::String()));
     repaint();
+}
+
+bool Knob::isModulated() const { return dest >= 0 && processor.getModDepth (dest) > 0.0f; }
+
+void Knob::showModMenu()
+{
+    const int current = processor.sourceOf (paramId);
+    juce::PopupMenu m;
+    m.addSectionHeader (caps (tr (lang, "modWith")));
+    const char* keys[] { "lfo1", "lfo2", "frag", "follow" };
+    for (int s = 1; s <= 4; ++s) m.addItem (s, tr (lang, keys[s - 1]), true, current == s);
+    m.addSeparator();
+    m.addItem (10, tr (lang, "removeMod"), current > 0);
+    m.addItem (11, tr (lang, "showModPage"));
+    juce::Component::SafePointer<Knob> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&slider), [safe] (int r) {
+        if (safe == nullptr) return;
+        if (r >= 1 && r <= 4) safe->processor.assignModulation (safe->paramId, r);
+        if (r == 10) safe->processor.removeModulation (safe->paramId);
+        if (r == 11 && safe->onShowModulation) safe->onShowModulation();
+        safe->repaint();
+    });
+}
+
+void Knob::paintOverChildren (juce::Graphics& g)
+{
+    if (! isModulated()) return;
+    const auto b = slider.getBounds().toFloat();
+    const float r = juce::jmin (b.getWidth(), b.getHeight()) * 0.5f - 4.5f;
+    const float cx = b.getCentreX(), cy = b.getCentreY();
+    const float start = pi * 1.25f, end = pi * 2.75f;
+    const float base = param->getValue(), depth = processor.getModDepth (dest);
+    const float lo = juce::jlimit (0.0f, 1.0f, base - depth), hi = juce::jlimit (0.0f, 1.0f, base + depth);
+    juce::Path arc;
+    arc.addCentredArc (cx, cy, r, r, 0.0f, start + lo * (end - start), start + hi * (end - start), true);
+    g.setColour (colours::amber.withAlpha (isEnabled() ? 0.95f : 0.4f));
+    g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const float now = processor.getModulatedNorm (dest);
+    if (now >= 0.0f)
+    {
+        const float a = start + now * (end - start);
+        const float dx = cx + std::sin (a) * r, dy = cy - std::cos (a) * r;
+        g.setColour (colours::ink);
+        g.fillEllipse (dx - 4.0f, dy - 4.0f, 8.0f, 8.0f);
+        g.setColour (colours::glint);
+        g.fillEllipse (dx - 2.5f, dy - 2.5f, 5.0f, 5.0f);
+    }
 }
 
 void Knob::resized()
@@ -183,7 +271,14 @@ void Knob::paint (juce::Graphics& g)
     g.drawText (caps (u8 (lang == Lang::es ? spec.es : spec.en)), r.removeFromTop (15.0f), juce::Justification::centred);
     g.setColour (colours::inkSoft.withAlpha (alpha));
     g.setFont (mono (12.0f));
-    g.drawText (localNumber (param->getCurrentValueAsText(), lang), r.removeFromTop (14.0f), juce::Justification::centred);
+    juce::String text = param->getCurrentValueAsText();
+    if (paramId == "size")
+    {
+        const float maxMs = (float) processor.maxFragmentMs();
+        if (maxMs > 1.0f && param->convertFrom0to1 (param->getValue()) > maxMs)
+            text = formatValue (spec, maxMs) + " " + tr (lang, "maxShort");
+    }
+    g.drawText (localNumber (text, lang), r.removeFromTop (14.0f), juce::Justification::centred);
 }
 
 //==============================================================================
@@ -247,16 +342,58 @@ juce::Rectangle<float> Transport::stripArea() const
 
 float Transport::memoryMs() const { return (float) processor.memorySeconds() * 1000.0f; }
 
+juce::Rectangle<float> Transport::barArea() const
+{
+    const auto s = stripArea();
+    return { s.getX(), 164.0f, s.getWidth(), 6.0f };
+}
+
+float Transport::viewNew() const  { return zoomSpan > 0.0f ? zoomNew : 0.0f; }
+float Transport::viewSpan() const { return zoomSpan > 0.0f ? zoomSpan : memoryMs(); }
+
+// The tape shows "now" at the right; zoomed, it shows viewSpan() ms ending viewNew() ms ago.
 float Transport::xForMs (float ms) const
 {
     const auto s = stripArea();
-    return s.getX() + s.getWidth() * (1.0f - juce::jlimit (0.0f, 1.0f, ms / memoryMs()));
+    return s.getX() + s.getWidth() * (1.0f - (ms - viewNew()) / viewSpan());
 }
 
 float Transport::msForX (float x) const
 {
     const auto s = stripArea();
-    return (1.0f - juce::jlimit (0.0f, 1.0f, (x - s.getX()) / s.getWidth())) * memoryMs();
+    return juce::jlimit (0.0f, memoryMs(), viewNew() + (1.0f - (x - s.getX()) / s.getWidth()) * viewSpan());
+}
+
+void Transport::zoomAround (float ms, float factor)
+{
+    const float mem = memoryMs();
+    const float span = juce::jlimit (juce::jmin (50.0f, mem), mem, viewSpan() * factor);
+    if (span >= mem - 0.5f) { zoomSpan = 0.0f; zoomNew = 0.0f; repaint(); return; }
+    // keep the point under the mouse where it is
+    const float newer = ms - (ms - viewNew()) * span / viewSpan();
+    zoomSpan = span;
+    zoomNew = juce::jlimit (0.0f, mem - span, newer);
+    repaint();
+}
+
+void Transport::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    const auto s = stripArea();
+    if (e.position.y < barArea().getY() - 6.0f || e.position.y > s.getBottom() + 26.0f) return;
+    const bool horizontal = std::abs (w.deltaX) > std::abs (w.deltaY) || e.mods.isShiftDown();
+    if (horizontal)
+    {
+        if (zoomSpan <= 0.0f) return;
+        const float d = std::abs (w.deltaX) > std::abs (w.deltaY) ? w.deltaX : w.deltaY;
+        zoomNew = juce::jlimit (0.0f, memoryMs() - zoomSpan, zoomNew + d * zoomSpan * 0.6f);
+        repaint();
+    }
+    else zoomAround (msForX (e.position.x), std::pow (2.0f, -w.deltaY * 3.0f));
+}
+
+void Transport::mouseMagnify (const juce::MouseEvent& e, float scale)
+{
+    if (scale > 0.0f) zoomAround (msForX (e.position.x), 1.0f / scale);
 }
 
 Transport::Hit Transport::hitTest (juce::Point<float> p) const
@@ -282,6 +419,18 @@ void Transport::mouseMove (const juce::MouseEvent& e)
 
 void Transport::mouseDown (const juce::MouseEvent& e)
 {
+    scrolling = false;
+    if (zoomSpan > 0.0f && barArea().expanded (0.0f, 6.0f).contains (e.position))
+    {
+        // the overview bar: grab the view, or jump to where it was clicked
+        const auto bar = barArea();
+        const float ms = (1.0f - (e.position.x - bar.getX()) / bar.getWidth()) * memoryMs();
+        if (ms < zoomNew || ms > zoomNew + zoomSpan) zoomNew = juce::jlimit (0.0f, memoryMs() - zoomSpan, ms - zoomSpan * 0.5f);
+        scrolling = true;
+        scrollGrab = ms - zoomNew;
+        repaint();
+        return;
+    }
     dragging = hitTest (e.position);
     if (dragging == Hit::none) return;
     dragStartPos = position->convertFrom0to1 (position->getValue());
@@ -293,6 +442,14 @@ void Transport::mouseDown (const juce::MouseEvent& e)
 
 void Transport::mouseDrag (const juce::MouseEvent& e)
 {
+    if (scrolling)
+    {
+        const auto bar = barArea();
+        const float ms = (1.0f - (e.position.x - bar.getX()) / bar.getWidth()) * memoryMs();
+        zoomNew = juce::jlimit (0.0f, memoryMs() - zoomSpan, ms - scrollGrab);
+        repaint();
+        return;
+    }
     if (dragging == Hit::none) return;
     const float mem = memoryMs(), ms = msForX (e.position.x);
     const float olderEdge = dragStartPos + dragStartWidth;
@@ -327,6 +484,7 @@ void Transport::mouseUp (const juce::MouseEvent&)
 
 void Transport::mouseDoubleClick (const juce::MouseEvent& e)
 {
+    if (zoomSpan > 0.0f && barArea().expanded (0.0f, 6.0f).contains (e.position)) { zoomSpan = 0.0f; zoomNew = 0.0f; repaint(); return; }
     if (hitTest (e.position) == Hit::none) return;
     position->beginChangeGesture(); width->beginChangeGesture();
     position->setValueNotifyingHost (position->convertTo0to1 (0.0f));
@@ -347,6 +505,7 @@ void Transport::update (const Telemetry& t, bool peaksFresh, bool running)
         hasPeaks = true;
     }
     if (running) reelAngle += 0.035f;   // the reels turn while the memory records
+    processor.setPeakView (viewNew(), viewSpan());
     repaint();
 }
 
@@ -438,9 +597,23 @@ void Transport::paint (juce::Graphics& g)
     g.setFont (mono (13.0f));
     g.drawText (formatSeconds (wid, lang), head.getX(), counter.getBottom() + 22.0f, head.getWidth(), 14.0f, juce::Justification::centred);
 
-    g.setColour (colours::smokedText);
-    g.setFont (label (12.0f));
-    g.drawText (tr (lang, "dragHint"), 0.0f, 162.0f, W, 14.0f, juce::Justification::centred);
+    if (zoomSpan > 0.0f)
+    {
+        // overview of the whole memory: the bright part is what the tape shows
+        const auto bar = barArea();
+        g.setColour (juce::Colour (0xff141210));
+        g.fillRoundedRectangle (bar, 3.0f);
+        const float x0 = bar.getX() + bar.getWidth() * (1.0f - (zoomNew + zoomSpan) / mem);
+        const float x1 = bar.getX() + bar.getWidth() * (1.0f - zoomNew / mem);
+        g.setColour (colours::printed);
+        g.fillRoundedRectangle (juce::Rectangle<float> (x0, bar.getY(), juce::jmax (6.0f, x1 - x0), bar.getHeight()), 3.0f);
+    }
+    else
+    {
+        g.setColour (colours::smokedText);
+        g.setFont (label (12.0f));
+        g.drawText (tr (lang, "dragHint"), 0.0f, 162.0f, W, 14.0f, juce::Justification::centred);
+    }
 
     // the tape: the memory, oldest at the left, "now" at the right
     const auto s = stripArea();
@@ -448,6 +621,8 @@ void Transport::paint (juce::Graphics& g)
     oxide.addColour (0.5, colours::oxide);
     g.setGradientFill (oxide);
     g.fillRect (s);
+    g.saveState();
+    g.reduceClipRegion (s.expanded (10.0f, 12.0f).toNearestInt());
 
     if (hasPeaks)
     {
@@ -514,6 +689,8 @@ void Transport::paint (juce::Graphics& g)
         g.fillRect (hx - 0.5f, h.getY() + 6.0f, 1.0f, h.getHeight() - 12.0f);
     }
 
+    g.restoreState();
+
     g.setFont (label (12.0f));
     if (frozen)
     {
@@ -528,19 +705,23 @@ void Transport::paint (juce::Graphics& g)
         g.drawText (localNumber ((c > 0 ? "+" : "") + juce::String (c, 1), lang) + " st", s.getX(), s.getY() - 22.0f, 160.0f, 14.0f, juce::Justification::left);
     }
 
-    // ruler
-    const float steps[] = { 250, 500, 1000, 2000, 5000, 10000 };
+    // ruler, for what the tape shows
+    const float steps[] = { 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2000, 5000, 10000 };
+    const float span = viewSpan(), first = viewNew();
     float st = 10000.0f;
-    for (auto v : steps) if (mem / v <= 12.0f) { st = v; break; }
+    for (auto v : steps) if (span / v <= 12.0f) { st = v; break; }
     g.setFont (mono (11.5f));
-    for (int k = 0; k * st <= mem + 1.0f; ++k)
+    bool unitShown = false;
+    for (int k = (int) std::ceil (first / st - 1.0e-4f); k * st <= first + span + 0.01f; ++k)
     {
         const float ms = k * st, x = xForMs (ms);
         g.setColour (colours::smokedText);
         g.fillRect (x - 0.5f, s.getBottom() + 3.0f, 1.0f, 4.0f);
-        const juce::String t = k == 0 ? tr (lang, "now")
-                             : juce::String::fromUTF8 ("−") + localNumber (juce::String (ms / 1000.0f, std::fmod (ms, 1000.0f) > 0 ? 1 : 0), lang) + (k == 1 ? " s" : "");
-        if (k == 0) g.drawText (t, (int) x - 60, (int) s.getBottom() + 9, 60, 13, juce::Justification::right);
+        const bool inMs = st < 100.0f;
+        const juce::String num = inMs ? juce::String (juce::roundToInt (ms)) : juce::String (ms / 1000.0f, std::fmod (ms, 1000.0f) > 0 ? (st < 1000.0f ? 2 : 1) : 0);
+        juce::String t = k == 0 ? tr (lang, "now") : juce::String::fromUTF8 ("−") + localNumber (num, lang);
+        if (k != 0 && ! unitShown && x < s.getRight() - 40.0f) { t += inMs ? " ms" : " s"; unitShown = true; }
+        if (x > s.getRight() - 30.0f) g.drawText (t, (int) x - 60, (int) s.getBottom() + 9, 60, 13, juce::Justification::right);
         else if (x > s.getX() + 16.0f) g.drawText (t, (int) x - 30, (int) s.getBottom() + 9, 60, 13, juce::Justification::centred);
     }
     juce::ignoreUnused (H);
@@ -654,8 +835,296 @@ void Meter::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+namespace
+{
+    // Small drawings of the LFO shapes, in a 0…1 box.
+    juce::Path shapeIcon (int shape, juce::Rectangle<float> r)
+    {
+        juce::Path p;
+        auto pt = [&] (float x, float y) { return juce::Point<float> (r.getX() + x * r.getWidth(), r.getY() + (0.5f - 0.5f * y) * r.getHeight()); };
+        if (shape == modlib::steps)
+        {
+            const float v[] { 0.2f, 0.9f, -0.6f, 0.4f, -0.9f };
+            p.startNewSubPath (pt (0.0f, v[0]));
+            for (int i = 0; i < 5; ++i) { p.lineTo (pt (i / 5.0f, v[i])); p.lineTo (pt ((i + 1) / 5.0f, v[i])); }
+            return p;
+        }
+        const float a[] { 0.2f, 0.9f, -0.6f, 0.4f, -0.9f, 0.1f };
+        for (int i = 0; i <= 60; ++i)
+        {
+            const float t = i / 60.0f;
+            float y = 0.0f;
+            if (shape == modlib::smooth)
+            {
+                const int k = juce::jmin (4, (int) (t * 5.0f));
+                const float f = t * 5.0f - k, sm = 0.5f - 0.5f * std::cos (f * pi);
+                y = a[k] + (a[k + 1] - a[k]) * sm;
+            }
+            else y = modlib::shapeValue (shape, t * 2.0, 0.0f, 0.0f);
+            if (i == 0) p.startNewSubPath (pt (t, y)); else p.lineTo (pt (t, y));
+        }
+        return p;
+    }
+}
+
+ShapePicker::ShapePicker (BarajaProcessor& p, const juce::String& id) : param (p.apvts.getParameter (id))
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void ShapePicker::paint (juce::Graphics& g)
+{
+    const int n = modlib::numShapes;
+    const int current = juce::roundToInt (param->getValue() * (n - 1));
+    const float w = getWidth() / (float) n;
+    for (int i = 0; i < n; ++i)
+    {
+        auto cell = juce::Rectangle<float> (i * w, 0.0f, w, (float) getHeight()).reduced (2.0f, 0.0f);
+        const bool on = i == current;
+        if (on) { g.setColour (colours::ink); g.fillRoundedRectangle (cell, 3.0f); }
+        g.setColour (colours::ink);
+        g.drawRoundedRectangle (cell.reduced (0.6f), 3.0f, 1.3f);
+        g.setColour (on ? colours::cream : colours::ink);
+        g.strokePath (shapeIcon (i, cell.reduced (8.0f, 9.0f)), juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+}
+
+void ShapePicker::mouseDown (const juce::MouseEvent& e)
+{
+    const int n = modlib::numShapes;
+    const int i = juce::jlimit (0, n - 1, (int) (e.position.x / getWidth() * n));
+    param->beginChangeGesture();
+    param->setValueNotifyingHost ((float) i / (float) (n - 1));
+    param->endChangeGesture();
+    repaint();
+}
+
+//==============================================================================
+RouteRow::RouteRow (BarajaProcessor& p, int i) : processor (p), index (i)
+{
+    source.addItemList (modSourceChoices(), 1);
+    juce::StringArray names;
+    for (const auto& d : modDestinations()) names.add (u8 (spec (d.id).en));
+    target.addItemList (names, 1);
+    amount.setSliderStyle (juce::Slider::LinearHorizontal);
+    amount.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+    amount.setDoubleClickReturnValue (true, 0.0);
+    amount.onValueChange = [this] { repaint(); };
+    sourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, routeId (i, "Src"), source);
+    targetAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, routeId (i, "Dest"), target);
+    amountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, routeId (i, "Amt"), amount);
+    source.onChange = [this] { repaint(); };
+    for (auto* c : { (juce::Component*) &source, (juce::Component*) &target, (juce::Component*) &amount }) addAndMakeVisible (c);
+}
+
+void RouteRow::setLanguage (Lang l)
+{
+    lang = l;
+    // read the selection before renaming: a combo box forgets it when its text changes
+    const int srcIndex = juce::roundToInt (processor.apvts.getRawParameterValue (routeId (index, "Src"))->load());
+    const int dstIndex = juce::roundToInt (processor.apvts.getRawParameterValue (routeId (index, "Dest"))->load());
+    const char* keys[] { "none", "lfo1", "lfo2", "frag", "follow" };
+    for (int k = 0; k < 5; ++k) source.changeItemText (k + 1, tr (l, keys[k]));
+    const auto& d = modDestinations();
+    for (int k = 0; k < (int) d.size(); ++k) target.changeItemText (k + 1, u8 (l == Lang::es ? spec (d[(size_t) k].id).es : spec (d[(size_t) k].id).en));
+    source.setText (source.getItemText (srcIndex), juce::dontSendNotification);
+    target.setText (target.getItemText (dstIndex), juce::dontSendNotification);
+    amount.setTooltip (u8 (l == Lang::es ? routeAmountSpec().noteEs : routeAmountSpec().noteEn));
+    repaint();
+}
+
+void RouteRow::resized()
+{
+    source.setBounds (30, 3, 110, 28);
+    target.setBounds (164, 3, 170, 28);
+    amount.setBounds (346, 3, 150, 28);
+}
+
+void RouteRow::paint (juce::Graphics& g)
+{
+    const bool active = source.getSelectedItemIndex() > 0;
+    g.setColour (colours::ink.withAlpha (active ? 0.07f : 0.03f));
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), 3.0f);
+    g.setColour (colours::inkSoft);
+    g.setFont (mono (13.0f));
+    g.drawText (juce::String (index + 1), 0, 0, 26, getHeight(), juce::Justification::centred);
+    g.setColour (colours::ink);
+    g.drawText (u8 ("→"), 140, 0, 24, getHeight(), juce::Justification::centred);
+    g.drawText (localNumber (formatValue (routeAmountSpec(), (float) amount.getValue()), lang), getWidth() - 64, 0, 60, getHeight(), juce::Justification::centredRight);
+}
+
+//==============================================================================
+ModPanel::ModPanel (BarajaProcessor& p) : processor (p)
+{
+    for (int l = 0; l < 2; ++l)
+    {
+        const juce::String n (l + 1);
+        shapes[l] = std::make_unique<ShapePicker> (p, "lfo" + n + "Shape");
+        syncs[l] = std::make_unique<Switch> (p, "lfo" + n + "Sync", std::vector<const char*> { "freeLfo", "host" }, "sync");
+        divisions[l].addItemList (divisionChoices(), 1);
+        divAttachments[l] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, "lfo" + n + "Div", divisions[l]);
+        lfoKnobs.add (new Knob (p, "lfo" + n + "Rate", 52));
+        lfoKnobs.add (new Knob (p, "lfo" + n + "Phase", 52));
+        for (auto* c : { (juce::Component*) shapes[l].get(), (juce::Component*) syncs[l].get(), (juce::Component*) &divisions[l] }) addChildComponent (c);
+    }
+    for (auto* k : lfoKnobs) addChildComponent (k);
+    for (const char* id : { "folAttack", "folRelease", "folGain" }) addChildComponent (followKnobs.add (new Knob (p, id, 52)));
+    for (int i = 0; i < numRoutes; ++i) addAndMakeVisible (rows.add (new RouteRow (p, i)));
+    showSource (0);
+}
+
+juce::Rectangle<int> ModPanel::tabArea (int i) const { return { i * 128, 34, 120, 32 }; }
+juce::Rectangle<float> ModPanel::screenArea() const { return { 0.0f, 102.0f, 504.0f, 104.0f }; }
+
+void ModPanel::showSource (int s)
+{
+    selected = s;
+    trail.clear();
+    for (int l = 0; l < 2; ++l)
+    {
+        const bool on = s == l;
+        shapes[l]->setVisible (on);
+        syncs[l]->setVisible (on);
+        lfoKnobs[l * 2 + 1]->setVisible (on);
+        const bool synced = processor.apvts.getRawParameterValue ("lfo" + juce::String (l + 1) + "Sync")->load() > 0.5f;
+        lfoKnobs[l * 2]->setVisible (on && ! synced);
+        divisions[l].setVisible (on && synced);
+    }
+    for (auto* k : followKnobs) k->setVisible (s == 3);
+    repaint();
+}
+
+void ModPanel::mouseDown (const juce::MouseEvent& e)
+{
+    for (int i = 0; i < 4; ++i)
+        if (tabArea (i).contains (e.getPosition())) showSource (i);
+}
+
+void ModPanel::setLanguage (Lang l)
+{
+    lang = l;
+    for (auto* k : lfoKnobs) k->setLanguage (l);
+    for (auto* k : followKnobs) k->setLanguage (l);
+    for (auto& sw : syncs) sw->setLanguage (l);
+    for (auto* r : rows) r->setLanguage (l);
+    for (int b = 0; b < 2; ++b)
+    {
+        auto& box = divisions[b];
+        const int current = juce::roundToInt (processor.apvts.getRawParameterValue ("lfo" + juce::String (b + 1) + "Div")->load());
+        for (int i = 0; i < modlib::numDivisions; ++i)
+        {
+            juce::String name = modlib::divisionName (i);
+            if (l == Lang::es) name = name.replace ("bars", u8 ("compases")).replace ("bar", u8 ("compás"));
+            box.changeItemText (i + 1, name);
+        }
+        box.setText (box.getItemText (current), juce::dontSendNotification);
+    }
+    repaint();
+}
+
+void ModPanel::update()
+{
+    // the sync switch decides between the rate knob and the division menu
+    for (int l = 0; l < 2; ++l)
+        if (selected == l)
+        {
+            const bool synced = processor.apvts.getRawParameterValue ("lfo" + juce::String (l + 1) + "Sync")->load() > 0.5f;
+            if (divisions[l].isVisible() != synced) { lfoKnobs[l * 2]->setVisible (! synced); divisions[l].setVisible (synced); }
+            syncs[l]->repaint();
+            shapes[l]->repaint();
+        }
+    trail.push_back (processor.getSourceValue (selected + 1));
+    if (trail.size() > 160) trail.erase (trail.begin());
+    for (auto* k : lfoKnobs) if (k->isModulated()) k->repaint();
+    repaint (screenArea().toNearestInt().expanded (2));
+}
+
+void ModPanel::resized()
+{
+    for (int l = 0; l < 2; ++l)
+    {
+        shapes[l]->setBounds (0, 222, 300, 40);
+        syncs[l]->setBounds (322, 214, 182, 44);
+        lfoKnobs[l * 2]->setBounds (0, 272, 82, 84);
+        divisions[l].setBounds (6, 298, 120, 30);
+        lfoKnobs[l * 2 + 1]->setBounds (140, 272, 82, 84);
+    }
+    for (int i = 0; i < followKnobs.size(); ++i) followKnobs[i]->setBounds (i * 96, 226, 82, 84);
+    for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (548, 60 + i * 37, 580, 34);
+}
+
+void ModPanel::paint (juce::Graphics& g)
+{
+    g.setColour (colours::ink);
+    g.setFont (heavy (16.0f));
+    g.drawText (caps (tr (lang, "sources")), 0, 0, 504, 20, juce::Justification::centredLeft);
+    g.fillRect (0, 22, 504, 2);
+    g.drawText (caps (tr (lang, "routes")), 548, 0, 580, 20, juce::Justification::centredLeft);
+    g.fillRect (548, 22, 580, 2);
+    g.setColour (colours::inkSoft);
+    g.setFont (label (12.0f));
+    g.drawText (caps (tr (lang, "source")), 578, 34, 110, 20, juce::Justification::centredLeft);
+    g.drawText (caps (tr (lang, "setting")), 712, 34, 170, 20, juce::Justification::centredLeft);
+    g.drawText (caps (tr (lang, "amount")), 894, 34, 150, 20, juce::Justification::centredLeft);
+
+    const char* keys[] { "lfo1", "lfo2", "frag", "follow" };
+    const char* help[] { "lfoHelp", "lfoHelp", "fragHelp", "followHelp" };
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto t = tabArea (i).toFloat();
+        const bool on = i == selected;
+        if (on) { g.setColour (colours::ink); g.fillRoundedRectangle (t, 4.0f); }
+        g.setColour (colours::ink);
+        g.drawRoundedRectangle (t.reduced (0.7f), 4.0f, 1.4f);
+        g.setColour (on ? colours::cream : colours::ink);
+        g.setFont (label (14.0f));
+        g.drawText (caps (tr (lang, keys[i])), t, juce::Justification::centred);
+    }
+    g.setColour (colours::inkSoft);
+    g.setFont (label (13.5f));
+    g.drawText (tr (lang, help[selected]), 0, 74, 504, 22, juce::Justification::centredLeft);
+
+    // the source over the last few seconds
+    const auto sc = screenArea();
+    g.setColour (colours::smoked);
+    g.fillRoundedRectangle (sc, 6.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    const bool unipolar = selected == 3;
+    const float zeroY = unipolar ? sc.getBottom() - 10.0f : sc.getCentreY();
+    g.fillRect (sc.getX() + 8.0f, zeroY, sc.getWidth() - 16.0f, 1.0f);
+    if (trail.size() > 1)
+    {
+        juce::Path p;
+        const float h = unipolar ? sc.getHeight() - 20.0f : sc.getHeight() * 0.5f - 10.0f;
+        for (size_t i = 0; i < trail.size(); ++i)
+        {
+            const float x = sc.getX() + 8.0f + (sc.getWidth() - 16.0f) * i / 159.0f;
+            const float y = zeroY - trail[i] * h;
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (colours::amber);
+        g.strokePath (p, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.fillEllipse (sc.getX() + 8.0f + (sc.getWidth() - 16.0f) * (trail.size() - 1) / 159.0f - 3.5f, zeroY - trail.back() * h - 3.5f, 7.0f, 7.0f);
+    }
+
+    if (selected == 2)
+    {
+        g.setColour (colours::inkSoft);
+        g.setFont (label (13.5f));
+        g.drawFittedText (tr (lang, "fragMore"), 0, 222, 504, 90, juce::Justification::topLeft, 5);
+    }
+    for (int l = 0; l < 2; ++l)
+        if (selected == l && divisions[l].isVisible())
+        {
+            g.setColour (colours::ink);
+            g.setFont (label (13.0f));
+            g.drawText (caps (tr (lang, "division")), 6, 276, 120, 18, juce::Justification::centredLeft);
+        }
+}
+
+//==============================================================================
 Content::Content (BarajaProcessor& p)
-    : processor (p), transport (p)
+    : processor (p), modPanel (p), transport (p)
 {
     setLookAndFeel (&lnf);
     lang = processor.getLanguage();
@@ -675,6 +1144,15 @@ Content::Content (BarajaProcessor& p)
         addAndMakeVisible (b);
     }
 
+    for (auto* b : { &pageControls, &pageModulation })
+    {
+        b->setClickingTogglesState (false);
+        addAndMakeVisible (b);
+    }
+    pageControls.onClick = [this] { showPage (0); };
+    pageModulation.onClick = [this] { showPage (1); };
+    addChildComponent (modPanel);
+
     addAndMakeVisible (transport);
     addAndMakeVisible (meter);
 
@@ -690,6 +1168,7 @@ Content::Content (BarajaProcessor& p)
     {
         auto* k = knobs.add (new Knob (processor, id, size));
         k->onUserChange = onUser;
+        k->onShowModulation = [this] { showPage (1); };
         addAndMakeVisible (k);
     }
 
@@ -715,7 +1194,21 @@ Content::Content (BarajaProcessor& p)
 
     setLanguage (lang);
     setSize (baseWidth, baseHeight);
+    showPage (0);
     startTimerHz (30);
+}
+
+void Content::showPage (int p)
+{
+    page = p;
+    pageControls.setToggleState (p == 0, juce::dontSendNotification);
+    pageModulation.setToggleState (p == 1, juce::dontSendNotification);
+    for (auto* k : knobs) k->setVisible (p == 0);
+    for (auto* s : { memorySwitch.get(), vdirSwitch.get(), quantSwitch.get(), spaceSwitch.get() }) s->setVisible (p == 0);
+    freezeButton.setVisible (p == 0);
+    meter.setVisible (p == 0);
+    modPanel.setVisible (p == 1);
+    repaint();
 }
 
 Content::~Content()
@@ -748,6 +1241,9 @@ void Content::setLanguage (Lang l)
     for (auto* s : { memorySwitch.get(), vdirSwitch.get(), quantSwitch.get(), spaceSwitch.get() }) s->setLanguage (l);
     transport.setLanguage (l);
     meter.setLanguage (l);
+    modPanel.setLanguage (l);
+    pageControls.setButtonText (tr (l, "controls"));
+    pageModulation.setButtonText (tr (l, "modulation"));
     freezeButton.setButtonText (tr (l, "freeze"));
     freezeButton.setTooltip (l == Lang::es ? u8 ("Deja de grabar y sigue barajando lo que quedó en la cinta")
                                            : u8 ("Stops recording and keeps shuffling what is on the tape"));
@@ -776,6 +1272,8 @@ void Content::timerCallback()
     const bool frozen = processor.apvts.getRawParameterValue ("freeze")->load() > 0.5f;
     transport.update (telemetry, fresh, ! frozen);
     meter.push (telemetry.outPeak);
+    if (page == 1) modPanel.update();
+    else for (auto* k : knobs) if (k->isModulated()) k->repaint();
     for (auto* s : { memorySwitch.get(), vdirSwitch.get(), quantSwitch.get(), spaceSwitch.get() }) s->repaint();
 
     const int outs = processor.getTotalNumOutputChannels();
@@ -826,7 +1324,7 @@ void Content::paint (juce::Graphics& g)
     g.drawText (caps (tr (lang, "presets")), 26, 74, 80, 26, juce::Justification::centredLeft);
 
     const char* titles[] { "memory", "fragments", "pitch", "space", "output" };
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5 && page == 0; ++i)
     {
         const auto a = sectionArea (i);
         g.setColour (colours::ink);
@@ -835,7 +1333,7 @@ void Content::paint (juce::Graphics& g)
         g.fillRect (a.getX(), a.getY() + 22, a.getWidth(), 2);
     }
 
-    if (outs < 3)
+    if (outs < 3 && page == 0)
     {
         const auto a = sectionArea (3);
         g.setColour (colours::inkSoft);
@@ -858,6 +1356,13 @@ void Content::resized()
     }
 
     transport.setBounds (26, 110, getWidth() - 52, 300);
+    {
+        const int w1 = (int) juce::GlyphArrangement::getStringWidth (label (13.5f), caps (pageModulation.getButtonText())) + 26;
+        const int w0 = (int) juce::GlyphArrangement::getStringWidth (label (13.5f), caps (pageControls.getButtonText())) + 26;
+        pageControls.setBounds (560, 28, w0, 26);
+        pageModulation.setBounds (pageControls.getRight() + 6, 28, w1, 26);
+    }
+    modPanel.setBounds (26, 424, getWidth() - 52, 356);
 
     auto place = [this] (const char* id, int cx, int y) { knob (id)->setBounds (cx - 41, y, 82, 100); };
 

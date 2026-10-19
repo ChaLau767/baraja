@@ -13,6 +13,18 @@ Baraja guarda los últimos segundos (de 5 a 60) de lo que entra en una memoria y
 
 Las versiones de prueba, que todavía no se publicaron como Release, están en la pestaña **[Actions](../../actions)**: abrí la última compilación exitosa y bajá el paquete desde *Artifacts* (hace falta una cuenta de GitHub).
 
+## Novedades de la 0.4: modulación y zoom
+
+- **Modulación**: cuatro fuentes y ocho rutas, en la página **Modulation** (botones *Controls / Modulation* del encabezado).
+  - **LFO 1 y LFO 2**: seis formas (senoidal, triángulo, sierra, cuadrada, escalones y azar suave), libres en Hz o atados al tempo del anfitrión (de 4 compases a 1/32, con tresillos), con fase.
+  - **FRAG**: un valor al azar nuevo para cada fragmento que nace. Los ajustes que se leen al nacer el fragmento (tamaño, ventana, posición, orden, transposición, reversa, dispersión, centro, amplitud al azar) reciben un valor distinto para cada uno.
+  - **FOLLOW** (*Seguidor*): sigue el nivel del sonido que entra, con ataque, caída y ganancia.
+  - Cada ruta lleva una fuente a cualquier ajuste continuo (también a la velocidad de los LFO), con una cantidad de −100 a +100 % del recorrido de su perilla. Las rutas son parámetros del DAW: se pueden automatizar.
+- **Desde cada perilla**: clic derecho → *Modular con…* LFO 1, LFO 2, FRAG o FOLLOW. Una perilla modulada muestra un arco con su recorrido y un punto que se mueve con la modulación.
+- **Zoom en la cinta**: rueda del mouse o pellizco del trackpad, centrado en el cursor. Mayúsculas+rueda, o la barra que aparece arriba de la cinta, para desplazarse; doble clic en la barra para ver toda la memoria. La forma de onda se dibuja con más detalle al acercarse.
+- **Fragmentos de 2 ms a 10 s**. Un fragmento no puede durar más que lo que guarda la memoria: con 5 s de memoria llegan hasta unos 5 s, y la perilla muestra el valor real («máx.»).
+- Las sesiones de la 0.3 se abren igual que antes (sin modulación).
+
 ## Novedades de la 0.3: entre Shuffling y Freeze
 
 - **Order**: en 0, los fragmentos se toman al azar dentro de la ventana, como un *shuffling*. En 100, siguen a un **cabezal de lectura** que recorre la ventana, como un *freeze*. Los valores intermedios mezclan ambos comportamientos.
@@ -42,7 +54,7 @@ Con la memoria sin congelar, Order 100 y Speed 1 el cabezal acompaña al sonido 
 | | Order | 0 = fragmentos al azar en la ventana (shuffling); 100 = siguen al cabezal de lectura (freeze). |
 | | Speed | Velocidad y sentido del cabezal (−4 a +4), independientes de la altura. 0 = detenido. |
 | | Freeze | Deja de grabar y sigue barajando lo guardado. |
-| Fragments | Size | Duración media de cada fragmento (5 ms a 1 s). |
+| Fragments | Size | Duración media de cada fragmento (2 ms a 10 s, según lo que entre en la memoria). |
 | | Variation | Cuánto cambia la duración de un fragmento a otro. |
 | | Density | Cuántos fragmentos suenan superpuestos en promedio. |
 | | Irregular | 0 = fragmentos a intervalos regulares; 100 = totalmente irregulares. |
@@ -58,6 +70,9 @@ Con la memoria sin congelar, Order 100 y Speed 1 el cabezal acompaña al sonido 
 | | Center | Multicanal: centro del reparto sobre el anillo, en grados. |
 | | Rotation | Multicanal: vueltas por segundo del centro alrededor del anillo. |
 | Output | Rnd amp | Variación de nivel al azar entre fragmentos. |
+| Modulation | LFO 1, LFO 2 | Forma, Sync (libre / anfitrión), velocidad en Hz o división del tempo, fase. |
+| | Follow | Ataque, caída y ganancia del seguidor de nivel de la entrada. |
+| | Route 1…8 | Fuente (LFO 1, LFO 2, FRAG, FOLLOW), ajuste de destino y cantidad (−100 a +100 %). |
 | | Mix | Proporción entre señal original y procesada. En multicanal, la original sale por 1 y 2. |
 | | Output | Ganancia final. |
 

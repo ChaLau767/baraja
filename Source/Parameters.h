@@ -43,7 +43,7 @@ inline const std::vector<FloatSpec>& floatSpecs()
 {
     using S = FloatSpec;
     static const std::vector<FloatSpec> specs {
-        { "size",      "Size",          "Tamaño",         5.0f,   1000.0f,  120.0f,  "ms",    0, S::logarithmic, false, "Average fragment length", "Duración media de cada fragmento" },
+        { "size",      "Size",          "Tamaño",         2.0f,   10000.0f, 120.0f,  "ms",    0, S::logarithmic, false, "Average fragment length (up to what the memory can hold)", "Duración media de cada fragmento (hasta lo que entra en la memoria)" },
         { "sizeVar",   "Variation",     "Variación",      0.0f,   100.0f,   30.0f,   "%",     0, S::linear,      false, "How much the length changes between fragments", "Cuánto cambia la duración entre fragmentos" },
         { "density",   "Density",       "Densidad",       0.5f,   16.0f,    4.0f,    "x",     1, S::logarithmic, false, "Average number of overlapping fragments", "Fragmentos superpuestos en promedio" },
         { "jitter",    "Irregular",     "Irregular",      0.0f,   100.0f,   60.0f,   "%",     0, S::linear,      false, "0 = regular pulse, 100 = fully irregular", "0 = pulso regular, 100 = totalmente irregular" },
@@ -67,11 +67,72 @@ inline const std::vector<FloatSpec>& floatSpecs()
     return specs;
 }
 
+//==============================================================================
+// Modulation (Baraja 0.4): two LFOs, FRAG (a random value per fragment) and FOLLOW
+// (the level of the input), sent through eight routes to any continuous setting.
+constexpr int numRoutes = 8;
+
+inline const std::vector<FloatSpec>& modSpecs()
+{
+    using S = FloatSpec;
+    static const std::vector<FloatSpec> specs {
+        { "lfo1Rate",   "LFO 1 rate",   "Vel. LFO 1",   0.01f,  20.0f,   0.5f,   "Hz", 2, S::logarithmic, false, "Free LFO speed", "Velocidad del LFO libre" },
+        { "lfo1Phase",  "LFO 1 phase",  "Fase LFO 1",   0.0f,   360.0f,  0.0f,   "deg", 0, S::linear,     false, "Where the cycle starts", "Dónde empieza el ciclo" },
+        { "lfo2Rate",   "LFO 2 rate",   "Vel. LFO 2",   0.01f,  20.0f,   0.2f,   "Hz", 2, S::logarithmic, false, "Free LFO speed", "Velocidad del LFO libre" },
+        { "lfo2Phase",  "LFO 2 phase",  "Fase LFO 2",   0.0f,   360.0f,  0.0f,   "deg", 0, S::linear,     false, "Where the cycle starts", "Dónde empieza el ciclo" },
+        { "folAttack",  "Follow attack",  "Ataque seg.",   0.1f,  500.0f,  10.0f,  "ms", 1, S::logarithmic, false, "How fast it rises with the input", "Qué tan rápido sube con la entrada" },
+        { "folRelease", "Follow release", "Caída seg.",    5.0f,  5000.0f, 250.0f, "ms", 0, S::logarithmic, false, "How fast it falls when the input gets quieter", "Qué tan rápido baja cuando la entrada se aquieta" },
+        { "folGain",    "Follow gain",    "Ganancia seg.", -24.0f, 36.0f,  12.0f,  "dB", 1, S::linear,      true,  "Sensitivity to the input level", "Sensibilidad al nivel de la entrada" },
+    };
+    return specs;
+}
+
+inline const FloatSpec& routeAmountSpec()
+{
+    static const FloatSpec s { "routeAmt", "Amount", "Cantidad", -100.0f, 100.0f, 0.0f, "%", 0, FloatSpec::linear, true,
+                               "How far the source moves the setting, as a share of its knob", "Cuánto mueve la fuente al ajuste, como parte de su perilla" };
+    return s;
+}
+
+inline juce::String routeId (int i, const char* what) { return "route" + juce::String (i + 1) + what; }
+
 inline const FloatSpec& spec (const juce::String& id)
 {
     for (const auto& s : floatSpecs()) if (id == s.id) return s;
+    for (const auto& s : modSpecs()) if (id == s.id) return s;
+    if (id.startsWith ("route")) return routeAmountSpec();
     jassertfalse;
     return floatSpecs().front();
+}
+
+inline const juce::StringArray& modSourceChoices() { static const juce::StringArray c { "None", "LFO 1", "LFO 2", "FRAG", "FOLLOW" }; return c; }
+inline const juce::StringArray& lfoShapeChoices()  { static const juce::StringArray c { "Sine", "Triangle", "Saw", "Square", "Steps", "Smooth" }; return c; }
+inline juce::StringArray divisionChoices()
+{
+    juce::StringArray c;
+    for (int i = 0; i < modlib::numDivisions; ++i) c.add (modlib::divisionName (i));
+    return c;
+}
+
+// What can be modulated, in this order (append only: sessions store the index).
+// frag: the setting is read when a fragment is born, so FRAG gives each fragment its own value.
+struct ModDest { const char* id; int frag; };
+inline const std::vector<ModDest>& modDestinations()
+{
+    static const std::vector<ModDest> d {
+        { "size", fragSize }, { "sizeVar", fragSizeVar }, { "density", -1 }, { "jitter", -1 }, { "shape", fragShape },
+        { "position", fragPosition }, { "width", fragWidth }, { "order", fragOrder }, { "speed", -1 },
+        { "pitch", fragPitch }, { "pitchVar", fragPitchVar }, { "drift", -1 }, { "driftRate", -1 }, { "reverse", fragReverse },
+        { "spread", fragSpread }, { "center", fragCenter }, { "rotation", -1 }, { "ampVar", fragAmpVar }, { "mix", -1 }, { "gain", -1 },
+        { "lfo1Rate", -1 }, { "lfo2Rate", -1 },
+    };
+    return d;
+}
+inline int destIndex (const juce::String& id)
+{
+    const auto& d = modDestinations();
+    for (int i = 0; i < (int) d.size(); ++i) if (id == d[(size_t) i].id) return i;
+    return -1;
 }
 
 // Memory lengths offered (seconds). The buffer is reallocated when this changes.
@@ -114,6 +175,20 @@ inline juce::NormalisableRange<float> rangeFor (const FloatSpec& s)
     return r;
 }
 
+// The same curve as rangeFor, for the modulation code (which has no JUCE).
+inline modlib::Range modRange (const FloatSpec& s)
+{
+    modlib::Range r;
+    r.min = s.min; r.max = s.max;
+    if (s.scale == FloatSpec::logarithmic) r.curve = modlib::Range::logarithmic;
+    else if (s.scale == FloatSpec::skewed)
+    {
+        r.curve = modlib::Range::skewed;
+        r.skew = (float) (std::log (0.5) / std::log (0.08));   // what setSkewForCentre (8 % of the range) gives
+    }
+    return r;
+}
+
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -142,6 +217,35 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "quant", v1 }, "Steps", quantChoices(), 0));
     layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "spaceMode", v2 }, "Space mode", spaceChoices(), 1));
     layout.add (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "freeze", v1 }, "Freeze", false));
+
+    // modulation, added in 0.4
+    const int v4 = 4;
+    auto floatParam = [] (const FloatSpec& s, const juce::String& id, const juce::String& name) {
+        const auto sp = s;
+        return std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id, 4 }, name, rangeFor (s), s.def,
+            juce::AudioParameterFloatAttributes()
+                .withLabel (s.unit)
+                .withStringFromValueFunction ([sp] (float v, int) { return formatValue (sp, v); })
+                .withValueFromStringFunction ([sp] (const juce::String& t) { return parseValue (sp, t); }));
+    };
+    for (int l = 1; l <= 2; ++l)
+    {
+        const juce::String n (l);
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "lfo" + n + "Shape", v4 }, "LFO " + n + " shape", lfoShapeChoices(), 0));
+        layout.add (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "lfo" + n + "Sync", v4 },  "LFO " + n + " sync", false));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "lfo" + n + "Div", v4 },   "LFO " + n + " division", divisionChoices(), 4));
+    }
+    for (const auto& s : modSpecs()) layout.add (floatParam (s, s.id, u8 (s.en)));
+    juce::StringArray destNames;
+    for (const auto& d : modDestinations()) destNames.add (u8 (spec (d.id).en));
+    for (int i = 0; i < numRoutes; ++i)
+    {
+        const juce::String n ("Route " + juce::String (i + 1));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { routeId (i, "Src"), v4 },  n + " source", modSourceChoices(), 0));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { routeId (i, "Dest"), v4 }, n + " target", destNames, 0));
+        layout.add (floatParam (routeAmountSpec(), routeId (i, "Amt"), n + " amount"));
+    }
     return layout;
 }
 
@@ -208,6 +312,32 @@ inline juce::String tr (Lang lang, const char* key)
         { "dragHint",    "Drag the heads to set the window; drag between them to move it", "Arrastrá los cabezales para ajustar la ventana; entre ellos, para moverla" },
         { "peak",        "PEAK  dBFS",             "PICO  dBFS" },
         { "dblclick",    "Double-click: default value", "Doble clic: valor inicial" },
+        { "controls",    "Controls",               "Controles" },
+        { "maxShort",    "max",                    "máx." },
+        { "modulation",  "Modulation",             "Modulación" },
+        { "sources",     "Sources",                "Fuentes" },
+        { "routes",      "Routes",                 "Rutas" },
+        { "source",      "Source",                 "Fuente" },
+        { "setting",     "Setting",                "Ajuste" },
+        { "amount",      "Amount",                 "Cantidad" },
+        { "none",        "—",                      "—" },
+        { "lfo1",        "LFO 1",                  "LFO 1" },
+        { "lfo2",        "LFO 2",                  "LFO 2" },
+        { "frag",        "FRAG",                   "FRAG" },
+        { "follow",      "FOLLOW",                 "SEGUIDOR" },
+        { "sync",        "Sync",                   "Sincronía" },
+        { "freeLfo",     "Free",                   "Libre" },
+        { "host",        "Host",                   "Anfitrión" },
+        { "division",    "Division",               "División" },
+        { "modWith",     "Modulate with",          "Modular con" },
+        { "removeMod",   "Remove modulation",      "Quitar la modulación" },
+        { "showModPage", "Show the modulation page", "Ver la página de modulación" },
+        { "rightClickMod", "Right-click: modulate", "Clic derecho: modular" },
+        { "lfoHelp",     "A low-frequency oscillator: free (Hz) or locked to the host tempo", "Un oscilador lento: libre (Hz) o atado al tempo del anfitrión" },
+        { "fragHelp",    "A new random value for every fragment that is born", "Un valor al azar nuevo para cada fragmento que nace" },
+        { "followHelp",  "Follows the level of the incoming sound", "Sigue el nivel del sonido que entra" },
+        { "fragMore",    "Settings read when a fragment is born (size, window, position, order, transposition, reverse, spread, center, random amplitude) get a different value for each fragment. Other settings take the value of the newest fragment.", "Los ajustes que se leen al nacer cada fragmento (tamaño, ventana, posición, orden, transposición, reversa, dispersión, centro, amplitud al azar) reciben un valor distinto para cada uno. Los demás toman el valor del fragmento más reciente." },
+        { "zoomHint",    "Wheel or pinch on the tape: zoom · Shift+wheel or the bar: move · Double-click the bar: all", "Rueda o pellizco sobre la cinta: zoom · Mayúsculas+rueda o la barra: desplazarse · Doble clic en la barra: todo" },
     };
     for (const auto& e : table)
         if (std::strcmp (e.key, key) == 0) return u8 (lang == Lang::es ? e.es : e.en);

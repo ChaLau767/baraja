@@ -44,6 +44,21 @@ public:
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool over, bool down) override;
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool over, bool down) override;
     juce::Font getPopupMenuFont() override { return label (15.0f); }
+    void drawComboBox (juce::Graphics&, int w, int h, bool down, int bx, int by, int bw, int bh, juce::ComboBox&) override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return label (14.0f); }
+    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
+    void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h, float pos, float minPos, float maxPos,
+                           juce::Slider::SliderStyle, juce::Slider&) override;
+};
+
+// A slider that leaves the right click to the modulation menu.
+class ModSlider : public juce::Slider
+{
+public:
+    std::function<void()> onPopup;
+    void mouseDown (const juce::MouseEvent& e) override { if (e.mods.isPopupMenu()) { if (onPopup) onPopup(); return; } Slider::mouseDown (e); }
+    void mouseDrag (const juce::MouseEvent& e) override { if (! e.mods.isPopupMenu()) Slider::mouseDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override   { if (! e.mods.isPopupMenu()) Slider::mouseUp (e); }
 };
 
 class Knob : public juce::Component
@@ -51,12 +66,18 @@ class Knob : public juce::Component
 public:
     Knob (BarajaProcessor&, const juce::String& paramId, float knobSize = 58.0f);
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     void setLanguage (Lang);
-    std::function<void()> onUserChange;
-    juce::Slider slider;
+    std::function<void()> onUserChange, onShowModulation;
+    ModSlider slider;
+    bool isModulated() const;
 
 private:
+    void showModMenu();
+    BarajaProcessor& processor;
+    juce::String paramId;
+    int dest = -1;
     juce::RangedAudioParameter* param;
     const FloatSpec& spec;
     float knobSize;
@@ -96,9 +117,17 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMagnify (const juce::MouseEvent&, float scale) override;
 
 private:
     juce::Rectangle<float> stripArea() const;
+    juce::Rectangle<float> barArea() const;
+    float viewNew() const;      // ms: the newest edge of what the tape shows
+    float viewSpan() const;     // ms shown
+public:
+    void zoomAround (float ms, float factor);
+private:
     float xForMs (float ms) const;
     float msForX (float x) const;
     float memoryMs() const;
@@ -115,6 +144,9 @@ private:
 
     Hit dragging = Hit::none;
     float dragStartPos = 0.0f, dragStartWidth = 0.0f, dragStartMs = 0.0f;
+    float zoomNew = 0.0f, zoomSpan = 0.0f;   // zoomSpan 0: the whole memory
+    bool scrolling = false;
+    float scrollGrab = 0.0f;
 };
 
 class Meter : public juce::Component
@@ -130,6 +162,61 @@ private:
     Lang lang = Lang::en;
 };
 
+// The shape buttons of an LFO.
+class ShapePicker : public juce::Component
+{
+public:
+    ShapePicker (BarajaProcessor&, const juce::String& paramId);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+private:
+    juce::RangedAudioParameter* param;
+};
+
+// One route: source → setting, and how much.
+class RouteRow : public juce::Component
+{
+public:
+    RouteRow (BarajaProcessor&, int index);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setLanguage (Lang);
+    juce::ComboBox source, target;
+    juce::Slider amount;
+private:
+    BarajaProcessor& processor;
+    int index;
+    Lang lang = Lang::en;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> sourceAttachment, targetAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
+};
+
+// The modulation page: sources on the left, routes on the right.
+class ModPanel : public juce::Component
+{
+public:
+    explicit ModPanel (BarajaProcessor&);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void setLanguage (Lang);
+    void update();
+private:
+    juce::Rectangle<float> screenArea() const;
+    juce::Rectangle<int> tabArea (int i) const;
+    void showSource (int s);
+    BarajaProcessor& processor;
+    Lang lang = Lang::en;
+    int selected = 0;                         // 0 LFO 1, 1 LFO 2, 2 FRAG, 3 FOLLOW
+    std::unique_ptr<ShapePicker> shapes[2];
+    std::unique_ptr<Switch> syncs[2];
+    juce::ComboBox divisions[2];
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> divAttachments[2];
+    juce::OwnedArray<Knob> lfoKnobs, followKnobs;   // rate, phase × 2; attack, release, gain
+    juce::OwnedArray<RouteRow> rows;
+    std::vector<float> trail;                   // recent values of the shown source
+};
+
 class Content : public juce::Component, private juce::Timer
 {
 public:
@@ -138,6 +225,8 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     static constexpr int baseWidth = 1180, baseHeight = 800;
+    void showPage (int page);     // 0 controls, 1 modulation
+    Transport& getTransport() { return transport; }
 
 private:
     void timerCallback() override;
@@ -150,6 +239,9 @@ private:
     Lang lang = Lang::en;
 
     juce::TextButton langEn { "EN" }, langEs { "ES" };
+    juce::TextButton pageControls, pageModulation;
+    int page = 0;
+    ModPanel modPanel;
     juce::OwnedArray<juce::TextButton> presetButtons;
     Transport transport;
     Meter meter;

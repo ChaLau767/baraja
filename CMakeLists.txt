@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Baraja VERSION 0.3.0 LANGUAGES C CXX)
+project(Baraja VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,7 +92,7 @@ if(BARAJA_SNAPSHOT)
     target_sources(baraja_snapshot PRIVATE tests/Snapshot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(baraja_snapshot PRIVATE Source)
     target_compile_definitions(baraja_snapshot PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_VersionString="0.3.0" JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_VersionString="0.4.0" JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(baraja_snapshot PRIVATE BarajaData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 
     juce_add_console_app(baraja_hosttest PRODUCT_NAME "baraja_hosttest")

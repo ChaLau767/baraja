@@ -53,13 +53,14 @@ jobs:
       - name: Probar el motor
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Probar el plugin como lo carga un DAW (hasta 64 salidas, sesiones 0.1)
+      - name: Probar el plugin como lo carga un DAW (hasta 64 salidas, sesiones 0.1, modulación)
         run: |
           BIN=build/baraja_hosttest_artefacts/Release
           SNAP=build/baraja_snapshot_artefacts/Release
           if [ "$RUNNER_OS" = "Windows" ]; then EXT=.exe; else EXT=; fi
           "$BIN/baraja_hosttest$EXT" "build/Baraja_artefacts/Release/VST3/Baraja.vst3"
           "$SNAP/baraja_snapshot$EXT" --compat
+          "$SNAP/baraja_snapshot$EXT" --mod
 
       - name: Validar el plugin con pluginval
         run: |

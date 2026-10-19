@@ -11,11 +11,23 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include "Modulation.h"
 
 namespace baraja
 {
 
 enum class SpaceMode { points = 0, ring = 1 };
+
+// Settings read when a fragment is born: FRAG can give each fragment its own value.
+enum FragTarget { fragSize = 0, fragSizeVar, fragShape, fragPosition, fragWidth, fragOrder, fragPitch, fragPitchVar,
+                  fragReverse, fragSpread, fragCenter, fragAmpVar, numFragTargets };
+
+struct FragRoute
+{
+    int target = fragSize;
+    float amount = 0.0f;       // -1 … +1 of the knob's range
+    modlib::Range range;
+};
 
 struct Params
 {
@@ -43,6 +55,9 @@ struct Params
     float mix       = 100.0f;   // % processed
     float gain      = 0.0f;     // dB
     bool  freeze    = false;
+    // FRAG: one random value per fragment, sent to these settings
+    FragRoute frag[8];
+    int numFrag = 0;
 };
 
 struct GrainView
@@ -100,6 +115,15 @@ public:
 
     double getMemoryMs() const noexcept { return memorySamples * 1000.0 / sr; }
 
+    // The longest fragment the memory can hold (at its original pitch).
+    double getMaxFragmentMs() const noexcept { return buffer.empty() ? 0.0 : maxSpanFraction * (buffer.size() - 1024.0) * 1000.0 / sr; }
+
+    // Which part of the memory the peaks describe (ms back from now, and how long).
+    void setPeakView (double newestMs, double spanMs) noexcept { peakNewMs = newestMs; peakSpanMs = spanMs; }
+
+    // The random value FRAG gave the newest fragment (-1 … +1).
+    float getLastFrag() const noexcept { return lastFrag; }
+
     // inR may equal inL (mono input). outs holds numOuts channel pointers (1..64).
     void process (const float* inL, const float* inR, float* const* outs, int numOuts, int n, const Params& p) noexcept
     {
@@ -110,7 +134,7 @@ public:
         mixTarget  = p.mix / 100.0;
         gainTarget = std::pow (10.0, p.gain / 20.0);
         const double wetScale = 0.85 / std::sqrt (std::max (1.0f, p.density));
-        const double interval = (std::max (4.0f, p.size) * sr / 1000.0) / std::max (0.1f, p.density);
+        const double interval = (std::max (2.0f, p.size) * sr / 1000.0) / std::max (0.1f, p.density);
 
         driftPhase += n * p.driftRate / sr;
         if (driftPhase >= 1.0)
@@ -235,12 +259,14 @@ public:
 
         if (++teleCount % 3 == 0)
         {
-            const double D = memorySamples;
+            // the part of the memory the interface shows (all of it unless zoomed)
+            const double newest = std::clamp (peakNewMs, 0.0, getMemoryMs()) * sr / 1000.0;
+            const double D = peakSpanMs > 0.0 ? std::clamp (peakSpanMs * sr / 1000.0, 16.0, memorySamples - newest) : memorySamples;
             const int step = std::max (1, (int) (D / Telemetry::numPeaks / 48.0));
             for (int b = 0; b < Telemetry::numPeaks; ++b)
             {
-                const double d0 = D * (1.0 - (double) b / Telemetry::numPeaks);
-                const double d1 = D * (1.0 - (double) (b + 1) / Telemetry::numPeaks);
+                const double d0 = newest + D * (1.0 - (double) b / Telemetry::numPeaks);
+                const double d1 = newest + D * (1.0 - (double) (b + 1) / Telemetry::numPeaks);
                 float mx = 0.0f;
                 for (double d = d0; d > d1; d -= step)
                     mx = std::max (mx, std::abs (buffer[(size_t) ((writePos - (int) d) & mask)]));
@@ -309,16 +335,48 @@ private:
         }
     }
 
-    void spawn (const Params& p, int numOuts) noexcept
+    void spawn (const Params& base, int numOuts) noexcept
     {
         Grain* g = nullptr;
         for (auto& gr : grains) if (! gr.active) { g = &gr; break; }
         if (g == nullptr) return;
 
+        // FRAG: this fragment's own random value moves the settings it is routed to
+        lastFrag = (float) (rnd() * 2.0 - 1.0);
+        Params p = base;
+        double fragNew = winNew, fragWide = winWide;
+        if (base.numFrag > 0)
+        {
+            bool window = false;
+            for (int i = 0; i < std::min (base.numFrag, 8); ++i)
+            {
+                const auto& fr = base.frag[i];
+                float* field = nullptr;
+                switch (fr.target)
+                {
+                    case fragSize:     field = &p.size; break;
+                    case fragSizeVar:  field = &p.sizeVar; break;
+                    case fragShape:    field = &p.shape; break;
+                    case fragPosition: field = &p.position; window = true; break;
+                    case fragWidth:    field = &p.width; window = true; break;
+                    case fragOrder:    field = &p.order; break;
+                    case fragPitch:    field = &p.pitch; break;
+                    case fragPitchVar: field = &p.pitchVar; break;
+                    case fragReverse:  field = &p.reverse; break;
+                    case fragSpread:   field = &p.spread; break;
+                    case fragCenter:   field = &p.center; break;
+                    case fragAmpVar:   field = &p.ampVar; break;
+                    default: break;
+                }
+                if (field != nullptr) *field = fr.range.apply (*field, fr.amount * lastFrag);
+            }
+            if (window) windowSamples (p, fragNew, fragWide);
+        }
+
         const int len = (int) buffer.size();
 
         double dur = p.size * (1.0 + (rnd() * 2.0 - 1.0) * p.sizeVar / 100.0);
-        if (dur < 4.0) dur = 4.0;
+        if (dur < 2.0) dur = 2.0;
         int length = (int) std::lround (dur * sr / 1000.0);
 
         const double r = rnd();
@@ -332,7 +390,7 @@ private:
         const bool rev = rnd() < p.reverse / 100.0;
 
         const double maxOld = len - 1024.0;
-        if (length * rate > maxOld * 0.25) length = (int) (maxOld * 0.25 / rate);
+        if (length * rate > maxOld * maxSpanFraction) length = (int) (maxOld * maxSpanFraction / rate);
         length = std::max (length, 16);
         const double span = length * rate;
 
@@ -342,7 +400,7 @@ private:
 
         // shuffling: anywhere in the window; freeze: centred on the read head, with a little scatter
         const double o = std::clamp (p.order / 100.0, 0.0, 1.0);
-        const double dRandom = winNew + rnd() * winWide;
+        const double dRandom = fragNew + rnd() * fragWide;
         const double dHead = headDelay + (rev ? -0.5 : 0.5) * span + (rnd() * 2.0 - 1.0) * 0.15 * span;
         double d = (minD + dRandom) * (1.0 - o) + dHead * o;
         const double oldest = rev ? d + span : d;
@@ -371,6 +429,9 @@ private:
         wide = std::max (16.0, widMs * sr / 1000.0);
     }
 
+    static constexpr double maxSpanFraction = 0.45;   // of the buffer: room for long fragments read backwards
+    float lastFrag = 0.0f;
+    double peakNewMs = 0.0, peakSpanMs = 0.0;
     double sr = 48000.0, memorySamples = 480000.0;
     double headDelay = 0.0, winNew = 0.0, winWide = 48000.0;
     std::vector<float> buffer;
